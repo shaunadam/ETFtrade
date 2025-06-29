@@ -18,6 +18,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
+from data_cache import DataCache
+
 
 class VolatilityRegime(Enum):
     LOW = "low"
@@ -62,6 +64,7 @@ class RegimeDetector:
     
     def __init__(self, db_path: str = "journal.db"):
         self.db_path = db_path
+        self.data_cache = DataCache(db_path)
         self._ensure_tables()
     
     def _ensure_tables(self) -> None:
@@ -131,21 +134,20 @@ class RegimeDetector:
     
     def _get_vix_data(self, period: str = "3mo") -> pd.DataFrame:
         """Get VIX data for volatility regime detection."""
+        # VIX is not in our cache, use yfinance directly
         vix = yf.Ticker("^VIX")
         return vix.history(period=period)
     
     def _get_spy_data(self, period: str = "1y") -> pd.DataFrame:
         """Get SPY data for trend regime detection."""
-        spy = yf.Ticker("SPY")
-        return spy.history(period=period)
+        return self.data_cache.get_cached_data("SPY", period)
     
     def _get_sector_rotation_data(self, period: str = "3mo") -> Dict[str, pd.DataFrame]:
         """Get sector ETF data for rotation detection."""
         tickers = ["QQQ", "IWM", "XLK", "XLF"]
         data = {}
         for ticker in tickers:
-            etf = yf.Ticker(ticker)
-            data[ticker] = etf.history(period=period)
+            data[ticker] = self.data_cache.get_cached_data(ticker, period)
         return data
     
     def _get_risk_sentiment_data(self, period: str = "3mo") -> Dict[str, pd.DataFrame]:
@@ -155,8 +157,7 @@ class RegimeDetector:
         tickers = ["XLU", "XLP", "TLT", "QQQ", "XLF", "IWM"]
         data = {}
         for ticker in tickers:
-            etf = yf.Ticker(ticker)
-            data[ticker] = etf.history(period=period)
+            data[ticker] = self.data_cache.get_cached_data(ticker, period)
         return data
     
     def _detect_volatility_regime(self, vix_data: pd.DataFrame) -> Tuple[VolatilityRegime, float]:

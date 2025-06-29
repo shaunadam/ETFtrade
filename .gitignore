@@ -218,3 +218,12 @@ logs/
 *.log
 reports/*.html
 reports/*.pdf
+
+# Generated screening results and exports
+etf_signals_*.csv
+etf_signals_*.json
+screener_output_*.csv
+screener_output_*.json
+
+# Temporary data files (keep etf_list.csv)
+!etf_list.csv

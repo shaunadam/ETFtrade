@@ -19,6 +19,7 @@ import pandas as pd
 import yfinance as yf
 
 from regime_detection import RegimeDetector, RegimeData, VolatilityRegime, TrendRegime
+from data_cache import DataCache
 
 
 class SignalStrength(Enum):
@@ -33,6 +34,10 @@ class SetupType(Enum):
     BREAKOUT_CONTINUATION = "breakout_continuation"
     OVERSOLD_MEAN_REVERSION = "oversold_mean_reversion"
     REGIME_ROTATION = "regime_rotation"
+    GAP_FILL_REVERSAL = "gap_fill_reversal"
+    RELATIVE_STRENGTH_MOMENTUM = "relative_strength_momentum"
+    VOLATILITY_CONTRACTION = "volatility_contraction"
+    DIVIDEND_DISTRIBUTION_PLAY = "dividend_distribution_play"
 
 
 @dataclass
@@ -56,6 +61,7 @@ class BaseSetup(ABC):
     def __init__(self, db_path: str = "journal.db"):
         self.db_path = db_path
         self.regime_detector = RegimeDetector(db_path)
+        self.data_cache = DataCache(db_path)
     
     @abstractmethod
     def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
@@ -69,18 +75,7 @@ class BaseSetup(ABC):
     
     def get_market_data(self, symbol: str, period: str = "6mo") -> pd.DataFrame:
         """Get market data for analysis."""
-        ticker = yf.Ticker(symbol)
-        data = ticker.history(period=period)
-        
-        # Add technical indicators
-        data['SMA20'] = data['Close'].rolling(20).mean()
-        data['SMA50'] = data['Close'].rolling(50).mean()
-        data['SMA200'] = data['Close'].rolling(200).mean()
-        data['RSI'] = self._calculate_rsi(data['Close'])
-        data['ATR'] = self._calculate_atr(data)
-        data['BB_Upper'], data['BB_Lower'], data['BB_Middle'] = self._calculate_bollinger_bands(data['Close'])
-        
-        return data
+        return self.data_cache.get_cached_data(symbol, period)
     
     def _calculate_rsi(self, prices: pd.Series, window: int = 14) -> pd.Series:
         """Calculate RSI indicator."""
@@ -565,6 +560,487 @@ class RegimeRotationSetup(BaseSetup):
         return True, 0.6  # Regime rotation signals are generally valid
 
 
+class GapFillReversalSetup(BaseSetup):
+    """Gap fill reversal setup - trade ETFs that gap down with reversal signals."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="3mo")
+                if len(data) < 20:
+                    continue
+                
+                signal = self._analyze_gap_reversal(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_gap_reversal(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for gap fill reversal opportunity."""
+        if len(data) < 2:
+            return None
+            
+        current_price = data['Close'].iloc[-1]
+        current_volume = data['Volume'].iloc[-1]
+        prev_close = data['Close'].iloc[-2]
+        today_low = data['Low'].iloc[-1]
+        today_high = data['High'].iloc[-1]
+        
+        # Calculate gap percentage
+        gap_pct = (current_price - prev_close) / prev_close
+        
+        # Look for gap down of at least 2%
+        if gap_pct > -0.02:
+            return None
+        
+        # Check for reversal signal - price recovered from low
+        recovery_pct = (current_price - today_low) / today_low
+        if recovery_pct < 0.01:  # Need at least 1% recovery from low
+            return None
+        
+        # Volume confirmation - above average
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        volume_ratio = current_volume / avg_volume
+        if volume_ratio < 1.2:
+            return None
+        
+        # Calculate technical levels
+        atr = data['ATR'].iloc[-1]
+        gap_fill_level = prev_close
+        
+        # Position sizing and risk management
+        stop_loss = today_low * 0.98  # Just below today's low
+        target_price = min(gap_fill_level, current_price + (2 * atr))  # Gap fill or 2 ATR
+        
+        # Confidence calculation
+        confidence = self._calculate_gap_confidence(regime, abs(gap_pct), recovery_pct, volume_ratio)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.GAP_FILL_REVERSAL,
+            signal_strength=SignalStrength.STRONG if abs(gap_pct) > 0.03 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Gap down {gap_pct:.1%}, recovered {recovery_pct:.1%} from low"
+        )
+    
+    def _calculate_gap_confidence(self, regime: RegimeData, gap_pct: float, recovery_pct: float, volume_ratio: float) -> float:
+        """Calculate confidence for gap reversal signal."""
+        confidence = 0.5  # Base confidence
+        
+        # Larger gaps have better reversal potential
+        if gap_pct > 0.04:
+            confidence += 0.2
+        elif gap_pct > 0.03:
+            confidence += 0.1
+        
+        # Strong recovery boosts confidence
+        if recovery_pct > 0.03:
+            confidence += 0.15
+        elif recovery_pct > 0.02:
+            confidence += 0.1
+        
+        # Volume confirmation
+        if volume_ratio > 2.0:
+            confidence += 0.15
+        elif volume_ratio > 1.5:
+            confidence += 0.1
+        
+        # Better in stable regimes
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.1
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.1
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if gap reversal signal is suitable for current regime."""
+        confidence = 0.6
+        
+        if regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.2
+        
+        return True, confidence
+
+
+class RelativeStrengthMomentumSetup(BaseSetup):
+    """Relative strength momentum setup - buy ETFs outperforming SPY during weakness."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        # Get SPY data for comparison
+        spy_data = self.get_market_data("SPY", period="3mo")
+        if len(spy_data) < 20:
+            return signals
+        
+        for symbol in symbols:
+            if symbol == "SPY":  # Skip SPY itself
+                continue
+                
+            try:
+                data = self.get_market_data(symbol, period="3mo")
+                if len(data) < 20:
+                    continue
+                
+                signal = self._analyze_relative_strength(symbol, data, spy_data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_relative_strength(self, symbol: str, data: pd.DataFrame, spy_data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for relative strength momentum opportunity."""
+        # Calculate recent performance vs SPY
+        lookback_days = 10
+        
+        if len(data) < lookback_days or len(spy_data) < lookback_days:
+            return None
+        
+        symbol_return = (data['Close'].iloc[-1] / data['Close'].iloc[-lookback_days] - 1)
+        spy_return = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-lookback_days] - 1)
+        
+        relative_performance = symbol_return - spy_return
+        
+        # Look for strong outperformance (>3%) while SPY is weak/flat
+        if relative_performance < 0.03:
+            return None
+        
+        # SPY should be weak or flat
+        if spy_return > 0.02:
+            return None
+        
+        current_price = data['Close'].iloc[-1]
+        sma20 = data['SMA20'].iloc[-1]
+        atr = data['ATR'].iloc[-1]
+        
+        # Price should be above 20-day SMA (momentum confirmation)
+        if current_price < sma20:
+            return None
+        
+        # Position sizing and risk management
+        stop_loss = current_price - (2 * atr)
+        target_price = current_price + (2.5 * atr)  # Slightly higher target for momentum
+        
+        # Confidence calculation
+        confidence = self._calculate_strength_confidence(regime, relative_performance, symbol_return)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.RELATIVE_STRENGTH_MOMENTUM,
+            signal_strength=SignalStrength.STRONG if relative_performance > 0.05 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Outperforming SPY by {relative_performance:.1%} over {lookback_days} days"
+        )
+    
+    def _calculate_strength_confidence(self, regime: RegimeData, relative_perf: float, absolute_return: float) -> float:
+        """Calculate confidence for relative strength signal."""
+        confidence = 0.5  # Base confidence
+        
+        # Stronger relative performance = higher confidence
+        if relative_perf > 0.06:
+            confidence += 0.2
+        elif relative_perf > 0.04:
+            confidence += 0.1
+        
+        # Positive absolute return while market is weak
+        if absolute_return > 0.03:
+            confidence += 0.15
+        elif absolute_return > 0.01:
+            confidence += 0.1
+        
+        # Works well in trending markets
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.1
+        elif regime.trend_regime == TrendRegime.DOWNTREND:
+            confidence += 0.2  # Even better when market is down
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if relative strength signal is suitable for current regime."""
+        confidence = 0.6
+        
+        # Works across most regimes
+        if regime.trend_regime == TrendRegime.DOWNTREND:
+            confidence += 0.2
+        
+        return True, confidence
+
+
+class VolatilityContractionSetup(BaseSetup):
+    """Volatility contraction setup - trade after periods of low volatility before expansion."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="6mo")
+                if len(data) < 50:
+                    continue
+                
+                signal = self._analyze_volatility_contraction(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_volatility_contraction(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for volatility contraction setup."""
+        current_atr = data['ATR'].iloc[-1]
+        atr_20_avg = data['ATR'].rolling(20).mean().iloc[-1]
+        
+        # ATR should be significantly below 20-day average (contraction)
+        atr_ratio = current_atr / atr_20_avg
+        if atr_ratio > 0.8:  # ATR not contracted enough
+            return None
+        
+        current_price = data['Close'].iloc[-1]
+        sma20 = data['SMA20'].iloc[-1]
+        sma50 = data['SMA50'].iloc[-1]
+        
+        # Price should be coiling near moving averages
+        sma_distance = abs(current_price - sma20) / current_price
+        if sma_distance > 0.02:  # Too far from SMA20
+            return None
+        
+        # Look for recent price compression (narrow range)
+        recent_range = data['High'].rolling(5).max().iloc[-1] - data['Low'].rolling(5).min().iloc[-1]
+        range_pct = recent_range / current_price
+        
+        if range_pct > 0.03:  # Range too wide
+            return None
+        
+        # Determine direction bias based on SMA alignment
+        direction_bullish = current_price > sma50 and sma20 > sma50
+        
+        # Position sizing and risk management
+        if direction_bullish:
+            stop_loss = current_price - (1.5 * current_atr)  # Tighter stop due to low volatility
+            target_price = current_price + (3 * current_atr)  # Expect volatility expansion
+        else:
+            return None  # Only trade bullish setups for now
+        
+        # Confidence calculation
+        confidence = self._calculate_contraction_confidence(regime, atr_ratio, range_pct)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.VOLATILITY_CONTRACTION,
+            signal_strength=SignalStrength.MEDIUM if atr_ratio < 0.7 else SignalStrength.WEAK,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"ATR contracted to {atr_ratio:.1%} of 20-day avg, range {range_pct:.1%}"
+        )
+    
+    def _calculate_contraction_confidence(self, regime: RegimeData, atr_ratio: float, range_pct: float) -> float:
+        """Calculate confidence for volatility contraction signal."""
+        confidence = 0.5  # Base confidence
+        
+        # Lower ATR ratio = higher confidence
+        if atr_ratio < 0.6:
+            confidence += 0.2
+        elif atr_ratio < 0.7:
+            confidence += 0.1
+        
+        # Tighter range = higher confidence
+        if range_pct < 0.02:
+            confidence += 0.15
+        elif range_pct < 0.025:
+            confidence += 0.1
+        
+        # Better after low volatility periods
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if volatility contraction signal is suitable for current regime."""
+        confidence = 0.6
+        
+        # Works better in low volatility regimes
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.2
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.3
+        
+        return confidence > 0.4, confidence
+
+
+class DividendDistributionPlaySetup(BaseSetup):
+    """Dividend/distribution play setup - combine technical setups with ex-dividend timing."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        # This setup works better in stable regimes
+        if current_regime.volatility_regime == VolatilityRegime.HIGH:
+            return signals
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="3mo")
+                if len(data) < 20:
+                    continue
+                
+                signal = self._analyze_dividend_play(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_dividend_play(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for dividend/distribution play opportunity."""
+        # Note: This is a simplified implementation
+        # In practice, you'd want to integrate with a dividend calendar API
+        
+        current_price = data['Close'].iloc[-1]
+        sma20 = data['SMA20'].iloc[-1]
+        sma50 = data['SMA50'].iloc[-1]
+        atr = data['ATR'].iloc[-1]
+        
+        # Basic technical requirements
+        # Price above both SMAs (uptrend)
+        if not (current_price > sma20 > sma50):
+            return None
+        
+        # Low volatility preferred for dividend plays
+        current_atr = data['ATR'].iloc[-1]
+        atr_20_avg = data['ATR'].rolling(20).mean().iloc[-1]
+        if current_atr > atr_20_avg * 1.2:  # High volatility
+            return None
+        
+        # Check if ETF typically pays dividends (simplified check)
+        sector = self._get_symbol_sector(symbol)
+        dividend_sectors = ["Utilities", "Consumer Staples", "Real Estate", "Fixed Income"]
+        
+        if sector not in dividend_sectors:
+            return None
+        
+        # Position sizing and risk management
+        stop_loss = current_price - (1.5 * atr)  # Tighter stop for dividend plays
+        target_price = current_price + (1 * atr)  # Conservative target
+        
+        # Confidence calculation
+        confidence = self._calculate_dividend_confidence(regime, sector)
+        if confidence < 0.4:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss, risk_per_trade=0.015)  # Lower risk
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.DIVIDEND_DISTRIBUTION_PLAY,
+            signal_strength=SignalStrength.WEAK,  # Conservative approach
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Dividend play in {sector} sector"
+        )
+    
+    def _get_symbol_sector(self, symbol: str) -> str:
+        """Get sector for a symbol from database."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT sector, theme FROM instruments WHERE symbol = ?", (symbol,))
+            result = cursor.fetchone()
+            
+            if result and result[0]:
+                return result[0]
+            elif result and result[1]:
+                return result[1]
+            
+            return "Unknown"
+    
+    def _calculate_dividend_confidence(self, regime: RegimeData, sector: str) -> float:
+        """Calculate confidence for dividend play signal."""
+        confidence = 0.4  # Base confidence (conservative)
+        
+        # Better in stable regimes
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.2
+        elif regime.volatility_regime == VolatilityRegime.MEDIUM:
+            confidence += 0.1
+        
+        # Better in certain market conditions
+        if regime.trend_regime in [TrendRegime.MILD_UPTREND, TrendRegime.RANGING]:
+            confidence += 0.15
+        
+        # Sector preferences during defensive periods
+        defensive_sectors = ["Utilities", "Consumer Staples"]
+        if sector in defensive_sectors and regime.volatility_regime != VolatilityRegime.LOW:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if dividend play signal is suitable for current regime."""
+        confidence = 0.5
+        
+        # Avoid high volatility periods
+        if regime.volatility_regime == VolatilityRegime.HIGH:
+            return False, 0.0
+        
+        # Better in stable conditions
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.2
+        
+        return True, confidence
+
+
 class SetupManager:
     """Manages all trade setups and scanning."""
     
@@ -574,7 +1050,11 @@ class SetupManager:
             SetupType.TREND_PULLBACK: TrendPullbackSetup(db_path),
             SetupType.BREAKOUT_CONTINUATION: BreakoutContinuationSetup(db_path),
             SetupType.OVERSOLD_MEAN_REVERSION: OversoldMeanReversionSetup(db_path),
-            SetupType.REGIME_ROTATION: RegimeRotationSetup(db_path)
+            SetupType.REGIME_ROTATION: RegimeRotationSetup(db_path),
+            SetupType.GAP_FILL_REVERSAL: GapFillReversalSetup(db_path),
+            SetupType.RELATIVE_STRENGTH_MOMENTUM: RelativeStrengthMomentumSetup(db_path),
+            SetupType.VOLATILITY_CONTRACTION: VolatilityContractionSetup(db_path),
+            SetupType.DIVIDEND_DISTRIBUTION_PLAY: DividendDistributionPlaySetup(db_path)
         }
     
     def get_all_symbols(self) -> List[str]:

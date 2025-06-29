@@ -109,6 +109,33 @@ def create_database_schema(cursor):
         )
     """)
     
+    # Price data caching table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS price_data (
+            symbol TEXT NOT NULL,
+            date DATE NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume INTEGER NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(symbol, date)
+        )
+    """)
+    
+    # Technical indicators caching table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS indicators (
+            symbol TEXT NOT NULL,
+            date DATE NOT NULL,
+            indicator_name TEXT NOT NULL,
+            value REAL NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(symbol, date, indicator_name)
+        )
+    """)
+    
     print("✅ Database schema created successfully")
 
 def load_etf_data(cursor, csv_file_path):
