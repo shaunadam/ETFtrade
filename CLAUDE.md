@@ -55,6 +55,10 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
+# IMPORTANT: Always activate virtual environment when starting work
+# Run this once per session before any Python commands:
+source .venv/bin/activate
+
 # Daily trading workflow
 python screener.py --regime-filter --export-csv          # Find trade candidates
 python journal.py --open-trades --correlations           # Check current positions

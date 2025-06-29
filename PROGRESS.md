@@ -2,14 +2,13 @@
 
 ## Setup Phase ✅
 - [x] Create requirements.txt with core dependencies
-- [ ] Create Python virtual environment (.venv) 
-- [ ] Install requirements in virtual environment
-
-**Note**: Virtual environment setup requires `python3-venv` package installation on the system.
+- [x] Create Python virtual environment (.venv) 
+- [x] Install requirements in virtual environment
+- [x] Create SQLite database (journal.db)
 
 ## Phase 1: Strategy Foundation 🚧
 - [ ] Create initial ETF universe CSV structure
-- [ ] Implement basic market regime detection
+- [x] Implement basic market regime detection
 - [ ] Create foundation for trade setups
 
 ## Phase 2: Screener + Backtest Engine 📋
@@ -35,7 +34,7 @@
 ## Current Status
 **Last Updated**: 2025-06-29  
 **Current Phase**: Setup  
-**Next Steps**: Complete environment setup, then begin Phase 1 strategy foundation
+**Next Steps**: Begin Phase 1 strategy foundation
 
 ## Notes
 - Using WSL2 Linux environment
