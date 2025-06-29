@@ -208,3 +208,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ETF Trading System specific
+journal.db
+backup_*.db
+*.db-journal
+charts/
+logs/
+*.log
+reports/*.html
+reports/*.pdf

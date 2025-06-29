@@ -127,9 +127,15 @@ Stored in etf_list.csv for now.
 4. **Phase 4**: Reporting Tools (performance vs benchmarks)
 5. **Phase 5**: Optimization & Expansion (strategy refinement)
 
+**Progress Tracking**: See [PROGRESS.md](PROGRESS.md) for detailed development status and completed tasks.
+
 ## Success Metrics
 - Beat SPY by 2%+ annually after costs
 - Stay within 20% maximum drawdown
 - Positive performance across market regimes
 - <30 minutes daily maintenance
 - Stable walk-forward parameters
+
+## Development Preferences
+- **Commit Messages**: Keep simple, 1 sentence, no "Generated with Claude Code" footers
+- **Code Style**: Follow existing patterns, minimal comments unless needed
