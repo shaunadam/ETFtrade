@@ -6,10 +6,10 @@
 - [x] Install requirements in virtual environment
 - [x] Create SQLite database (journal.db)
 
-## Phase 1: Strategy Foundation 🚧
-- [ ] Create initial ETF universe CSV structure
+## Phase 1: Strategy Foundation ✅
+- [x] Create initial ETF universe CSV structure
 - [x] Implement basic market regime detection
-- [ ] Create foundation for trade setups
+- [x] Create foundation for trade setups
 
 ## Phase 2: Screener + Backtest Engine 📋
 - [ ] Implement ETF screener with regime-aware filtering
@@ -17,7 +17,7 @@
 - [ ] Add regime analysis to backtesting
 
 ## Phase 3: Trade Journal 📋
-- [ ] Design SQLite database schema
+- [x] Design SQLite database schema (instruments, regimes done, more required for each feature developed)
 - [ ] Implement trade journal functionality
 - [ ] Add correlation tracking
 
@@ -33,8 +33,8 @@
 
 ## Current Status
 **Last Updated**: 2025-06-29  
-**Current Phase**: Setup  
-**Next Steps**: Begin Phase 1 strategy foundation
+**Current Phase**: Phase 1 Complete - Moving to Phase 2  
+**Next Steps**: Implement ETF screener with regime-aware filtering
 
 ## Notes
 - Using WSL2 Linux environment
