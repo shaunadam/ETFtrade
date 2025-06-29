@@ -1,0 +1,51 @@
+symbol,name,type,sector,theme,geography,leverage,volatility_profile,avg_volume_req,notes
+QQQ,Invesco QQQ Trust,ETF,Technology,Broad Market,US,1x,Medium,High,NASDAQ-100 tech-heavy
+IWM,iShares Russell 2000,ETF,Broad Market,Small Cap,US,1x,High,High,Small-cap growth potential
+SPY,SPDR S&P 500,ETF,Broad Market,Large Cap,US,1x,Low,High,Benchmark only
+XLK,Technology Select Sector SPDR,ETF,Technology,Sector,US,1x,Medium,High,S&P 500 tech sector
+VGT,Vanguard Information Technology ETF,ETF,Technology,Sector,US,1x,Medium,High,Broader tech exposure than XLK
+SOXX,iShares Semiconductor ETF,ETF,Technology,Semiconductors,US,1x,High,Medium,Pure semiconductor play
+ARKK,ARK Innovation ETF,ETF,Innovation,Disruptive Innovation,US,1x,High,High,Cathie Wood flagship fund
+ARKF,ARK Fintech Innovation ETF,ETF,Financial,Fintech Innovation,US,1x,High,Medium,Financial technology focus
+BOTZ,Global X Robotics & AI ETF,ETF,Technology,Robotics/AI,Global,1x,High,Medium,Automation and AI theme
+ROBO,ROBO Global Robotics and Automation,ETF,Technology,Robotics/AI,Global,1x,High,Medium,Robotics and automation
+QTEC,First Trust NASDAQ-100 Technology,ETF,Technology,Tech Growth,US,1x,Medium,Medium,NASDAQ-100 tech subset
+TQQQ,ProShares UltraPro QQQ,ETF,Technology,Leveraged Growth,US,3x,High,High,3x NASDAQ-100 leverage
+SOXL,Direxion Semiconductor Bull 3X,ETF,Technology,Leveraged Semiconductors,US,3x,High,High,3x semiconductor leverage
+TECL,Direxion Technology Bull 3X,ETF,Technology,Leveraged Tech,US,3x,High,Medium,3x technology leverage
+UPRO,ProShares UltraPro S&P500,ETF,Broad Market,Leveraged Broad,US,3x,High,Medium,3x S&P 500 leverage
+LABU,Direxion S&P Biotech Bull 3X,ETF,Biotech,Leveraged Biotech,US,3x,High,Medium,3x biotech leverage
+FNGU,MicroSectors FANG+ 3X Leveraged,ETN,Technology,Leveraged FANG,US,3x,High,Low,3x FANG+ stocks
+BULZ,MicroSectors Travel 3X Leveraged,ETN,Consumer Discretionary,Leveraged Travel,US,3x,High,Low,3x travel/leisure
+YINN,Direxion FTSE China Bull 3X,ETF,International,Leveraged China,China,3x,High,Low,3x China leverage
+TAN,Invesco Solar ETF,ETF,Energy,Solar/Clean Energy,Global,1x,High,Medium,Solar energy theme
+ICLN,iShares Global Clean Energy,ETF,Energy,Clean Energy,Global,1x,High,High,Broad clean energy
+LIT,Global X Lithium & Battery Tech,ETF,Materials,Battery/Lithium,Global,1x,High,Medium,Lithium and battery tech
+ESPO,VanEck Video Gaming and eSports,ETF,Consumer Discretionary,Gaming,Global,1x,High,Medium,Gaming and esports
+ARKW,ARK Next Generation Internet,ETF,Technology,Internet Innovation,US,1x,High,Medium,Next-gen internet
+SKYY,First Trust Cloud Computing,ETF,Technology,Cloud Computing,US,1x,Medium,Medium,Cloud infrastructure
+CIBR,First Trust NASDAQ Cybersecurity,ETF,Technology,Cybersecurity,US,1x,Medium,Medium,Cybersecurity theme
+MOON,Direxion Moonshot Innovators,ETF,Innovation,Speculative Innovation,US,1x,High,Low,High-risk innovation
+XLF,Financial Select Sector SPDR,ETF,Financial,Sector,US,1x,Medium,High,S&P 500 financials
+XLE,Energy Select Sector SPDR,ETF,Energy,Sector,US,1x,High,High,S&P 500 energy
+XLI,Industrial Select Sector SPDR,ETF,Industrial,Sector,US,1x,Medium,High,S&P 500 industrials
+XLY,Consumer Discretionary Select Sector,ETF,Consumer Discretionary,Sector,US,1x,Medium,High,S&P 500 consumer disc
+XLV,Health Care Select Sector SPDR,ETF,Healthcare,Sector,US,1x,Medium,High,S&P 500 healthcare
+XLB,Materials Select Sector SPDR,ETF,Materials,Sector,US,1x,Medium,High,S&P 500 materials
+XLRE,Real Estate Select Sector SPDR,ETF,Real Estate,Sector,US,1x,Medium,High,S&P 500 real estate
+EEM,iShares MSCI Emerging Markets,ETF,International,Emerging Markets,Emerging,1x,High,High,Broad emerging markets
+FXI,iShares China Large-Cap,ETF,International,China Large Cap,China,1x,High,High,Chinese large caps
+EWJ,iShares MSCI Japan,ETF,International,Japan,Japan,1x,Medium,High,Japanese equity exposure
+KWEB,KraneShares CSI China Internet,ETF,Technology,China Internet,China,1x,High,Medium,Chinese internet stocks
+ASHR,Xtrackers Harvest CSI 300,ETF,International,China A-Shares,China,1x,High,Medium,China A-shares access
+VWO,Vanguard Emerging Markets Stock,ETF,International,Emerging Markets,Emerging,1x,High,High,Broad emerging markets
+IBB,iShares Biotechnology,ETF,Biotech,Biotechnology,US,1x,High,High,NASDAQ biotech index
+XBI,SPDR S&P Biotech,ETF,Biotech,Biotechnology,US,1x,High,High,Equal-weight biotech
+ARKG,ARK Genomic Revolution,ETF,Biotech,Genomics,US,1x,High,Medium,Genomics and gene therapy
+GNOM,Global X Genomics & Biotechnology,ETF,Biotech,Genomics,Global,1x,High,Low,Genomics theme
+GLD,SPDR Gold Trust,ETF,Commodities,Gold,Global,1x,Medium,High,Physical gold exposure
+GDXJ,VanEck Junior Gold Miners,ETF,Commodities,Gold Mining,Global,1x,High,High,Junior gold miners
+USO,United States Oil Fund,ETF,Commodities,Oil,Global,1x,High,High,WTI crude oil exposure
+COPX,Global X Copper Miners,ETF,Commodities,Copper Mining,Global,1x,High,Medium,Copper mining companies
+TLT,iShares 20+ Year Treasury Bond,ETF,Fixed Income,Long-Term Bonds,US,1x,Medium,High,Long-duration treasuries
+VNQ,Vanguard Real Estate Investment Trust,ETF,Real Estate,REITs,US,1x,Medium,High,Broad REIT exposure
