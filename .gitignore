@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+.claude
+
+
 # C extensions
 *.so
 
@@ -205,3 +208,22 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ETF Trading System specific
+journal.db
+backup_*.db
+*.db-journal
+charts/
+logs/
+*.log
+reports/*.html
+reports/*.pdf
+
+# Generated screening results and exports
+etf_signals_*.csv
+etf_signals_*.json
+screener_output_*.csv
+screener_output_*.json
+
+# Temporary data files (keep etf_list.csv)
+!etf_list.csv
