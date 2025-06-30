@@ -44,18 +44,28 @@
 
 ## Current Status
 **Last Updated**: 2025-06-30  
-**Current Phase**: Phase 2 (Backtest Engine Complete with Risk-Free Rate Integration)  
+**Current Phase**: Phase 2 (Enhanced with First-Time Setup & Data Bootstrapping)  
 **Next Steps**: Build walk-forward backtesting engine with regime analysis
 
+## Recent Improvements (2025-06-30)
+- **✅ Fixed Critical Data Cache Issue**: Resolved spy_vs_sma200 NULL values by ensuring sufficient historical data for SMA200 calculations
+- **✅ Enhanced Cache Logic**: Modified cache to fetch 350+ days for indicators while maintaining efficient period-based queries  
+- **✅ Comprehensive Data Bootstrapping**: Automated bootstrap process for all regime detection ETFs (8 core + 20 priority ETFs)
+- **✅ Improved First-Time Setup**: Enhanced init_database.py with --bootstrap options (core/priority/all) for seamless onboarding
+- **✅ Complete Trade Setup Integration**: Updated initialization to include all 8 trade setups with dynamic counting
+- **✅ Eliminated Cache Warnings**: Zero "insufficient data" warnings after proper bootstrapping
+- **✅ Enhanced User Experience**: Clear setup guidance with usage examples and next steps
+
 ## Major Achievements
-- **Data Caching System**: 6,400+ price records, 37,000+ indicator values cached
+- **Enhanced Data Caching System**: 17,366+ price records, 122,106+ indicator values cached across 53 symbols
 - **API Optimization**: 95%+ reduction in yfinance API calls
 - **Production Screener**: Daily CLI workflow with export capabilities
-- **Regime Detection**: Comprehensive market regime analysis across 4 dimensions
+- **Regime Detection**: Comprehensive market regime analysis across 4 dimensions (warning-free)
 - **Performance**: Screening 50+ ETFs in seconds vs minutes
 - **Complete Trade Setup Suite**: 8 setups covering all major trading patterns and market conditions
 - **Backtest Engine**: Signal-based and setup-based backtesting with comprehensive performance metrics
 - **Risk-Free Rate System**: Dedicated database tables with 972+ rate records across 4 sources (^IRX, BIL, ^TNX, ^FVX)
+- **First-Time Setup Excellence**: One-command initialization with full data bootstrapping
 
 ## Technical Implementation
 - **Cache Architecture**: SQLite-based with healing strategy

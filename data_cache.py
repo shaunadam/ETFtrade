@@ -89,10 +89,20 @@ class DataCache:
             
             last_date = datetime.fromisoformat(result[0]).date()
             today = datetime.now().date()
+            days_diff = (today - last_date).days
             
-            # If last data is more than 2 days old (accounting for weekends)
-            if (today - last_date).days > 2:
-                return True
+            # Weekend-aware logic: only refresh if we're missing trading days
+            # Monday (0), Tuesday (1), Wednesday (2), Thursday (3), Friday (4)
+            # Saturday (5), Sunday (6)
+            today_weekday = today.weekday()
+            
+            if today_weekday <= 4:  # Monday-Friday
+                # On trading days, refresh if data is more than 1 day old
+                return days_diff > 1
+            else:  # Weekend (Saturday/Sunday)
+                # On weekends, only refresh if we don't have Friday's data
+                # Friday is at most 1-2 days ago on weekends
+                return days_diff > 2
             
             return False
     
@@ -100,7 +110,11 @@ class DataCache:
         """Get price data from cache."""
         # Convert period to days for SQL query
         days_map = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "2y": 730}
-        days = days_map.get(period, 180)
+        requested_days = days_map.get(period, 180)
+        
+        # Always fetch enough data for technical indicators (min 250 trading days for SMA200)
+        # but return only the requested period
+        fetch_days = max(requested_days, 350)  # 350 calendar days ≈ 250 trading days
         
         with sqlite3.connect(self.db_path) as conn:
             query = """
@@ -108,7 +122,7 @@ class DataCache:
                 FROM price_data 
                 WHERE symbol = ? AND date >= date('now', '-{} days')
                 ORDER BY date
-            """.format(days)
+            """.format(fetch_days)
             
             df = pd.read_sql_query(query, conn, params=(symbol,), 
                                  parse_dates=['date'], index_col='date')
@@ -118,6 +132,12 @@ class DataCache:
             
             # Rename columns to match yfinance format
             df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            
+            # Trim to requested period if we fetched extra data
+            if len(df) > 0 and fetch_days > requested_days:
+                cutoff_date = df.index.max() - pd.Timedelta(days=requested_days)
+                df = df[df.index >= cutoff_date]
+            
             return df
     
     def _add_cached_indicators(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
@@ -126,9 +146,13 @@ class DataCache:
             return df
         
         with sqlite3.connect(self.db_path) as conn:
-            # Get date range from the dataframe
-            start_date = df.index.min().strftime('%Y-%m-%d')
+            # Expand date range to ensure we get indicators for SMA200 calculation
+            # We need to look further back than the price data to get cached SMA200 values
             end_date = df.index.max().strftime('%Y-%m-%d')
+            
+            # Look back 400 days from the end to ensure we have cached SMA200
+            expanded_start = df.index.max() - pd.Timedelta(days=400)
+            start_date = expanded_start.strftime('%Y-%m-%d')
             
             query = """
                 SELECT date, indicator_name, value
@@ -150,7 +174,7 @@ class DataCache:
                 index='date', columns='indicator_name', values='value'
             )
             
-            # Merge with price data
+            # Merge with price data (only keep indicators that align with price data dates)
             df = df.join(indicators_pivot, how='left')
             
             return df

@@ -55,10 +55,16 @@ market_regimes: date, volatility_regime, trend_regime, sector_rotation, risk_on_
 ## Common Development Commands
 
 ```bash
-# Environment setup
+# Environment setup (first time)
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
+# Initialize database with market data (REQUIRED for first-time setup)
+python init_database.py --bootstrap core      # Essential ETFs for regime detection (recommended)
+python init_database.py --bootstrap priority  # Core + high-priority trading ETFs
+python init_database.py --bootstrap all       # All ETFs (slower, comprehensive)
+python init_database.py --skip-data           # Schema only (manual data loading required)
 
 # IMPORTANT: Always activate virtual environment when starting work
 # Run this once per session before any Python commands:
