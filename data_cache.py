@@ -361,6 +361,166 @@ class DataCache:
                 return datetime.fromisoformat(result[0]).date()
             return None
     
+    def get_risk_free_rate(self, start_date: datetime, end_date: datetime) -> float:
+        """
+        Get risk-free rate for the specified period from dedicated risk-free rate tables.
+        
+        Args:
+            start_date: Start date for period
+            end_date: End date for period
+            
+        Returns:
+            Average risk-free rate as decimal (e.g., 0.05 for 5%)
+        """
+        try:
+            # First check if we have risk-free rate data in dedicated tables
+            cached_rate = self._get_cached_risk_free_rate(start_date, end_date)
+            if cached_rate is not None:
+                return cached_rate
+            
+            # If no cached data, fetch and cache new data
+            self._fetch_and_cache_risk_free_rates()
+            
+            # Try again after fetching
+            cached_rate = self._get_cached_risk_free_rate(start_date, end_date)
+            if cached_rate is not None:
+                return cached_rate
+            
+            # Final fallback - use historical average of ~3%
+            logger.warning("No risk-free rate data available, using 3% default")
+            return 0.03
+            
+        except Exception as e:
+            logger.error(f"Error fetching risk-free rate: {e}")
+            return 0.03  # Default 3%
+    
+    def _get_cached_risk_free_rate(self, start_date: datetime, end_date: datetime) -> Optional[float]:
+        """Get risk-free rate from cache, trying sources by priority."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Get available rate sources ordered by priority
+            cursor = conn.execute("""
+                SELECT symbol, data_type FROM rate_metadata 
+                ORDER BY priority
+            """)
+            sources = cursor.fetchall()
+            
+            for symbol, data_type in sources:
+                # Query risk-free rate data for this source
+                query = """
+                    SELECT AVG(value) FROM risk_free_rates 
+                    WHERE symbol = ? AND date BETWEEN ? AND ?
+                """
+                
+                cursor = conn.execute(query, (symbol, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+                result = cursor.fetchone()
+                
+                if result and result[0] is not None:
+                    rate = result[0]
+                    if data_type == 'yield':
+                        # Yield data is already in percentage, convert to decimal
+                        rate = rate / 100.0
+                    # For etf_proxy, rate is already calculated returns
+                    logger.info(f"Using {symbol} risk-free rate: {rate:.4f}")
+                    return rate
+            
+            return None
+    
+    def _fetch_and_cache_risk_free_rates(self) -> None:
+        """Fetch and cache risk-free rate data from various sources."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT symbol, data_type FROM rate_metadata ORDER BY priority")
+            sources = cursor.fetchall()
+            
+            for symbol, data_type in sources:
+                try:
+                    logger.info(f"Fetching risk-free rate data for {symbol}...")
+                    
+                    if data_type == 'yield':
+                        # Fetch Treasury yield data
+                        self._fetch_treasury_yield_data(symbol)
+                    elif data_type == 'etf_proxy':
+                        # Fetch ETF data and calculate returns
+                        self._fetch_etf_proxy_data(symbol)
+                        
+                except Exception as e:
+                    logger.error(f"Error fetching {symbol}: {e}")
+                    continue
+    
+    def _fetch_treasury_yield_data(self, symbol: str) -> None:
+        """Fetch Treasury yield data and cache in risk_free_rates table."""
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="1y")
+            
+            if data.empty:
+                logger.warning(f"No data returned for {symbol}")
+                return
+            
+            # Cache yield data
+            rate_data = []
+            for date_idx, row in data.iterrows():
+                if not pd.isna(row['Close']):
+                    rate_data.append((
+                        symbol,
+                        date_idx.strftime('%Y-%m-%d'),
+                        'yield',
+                        float(row['Close'])  # Store as percentage
+                    ))
+            
+            if rate_data:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.executemany("""
+                        INSERT OR REPLACE INTO risk_free_rates 
+                        (symbol, date, rate_type, value)
+                        VALUES (?, ?, ?, ?)
+                    """, rate_data)
+                    conn.commit()
+                    logger.info(f"Cached {len(rate_data)} yield records for {symbol}")
+                    
+        except Exception as e:
+            logger.error(f"Error fetching Treasury yield data for {symbol}: {e}")
+    
+    def _fetch_etf_proxy_data(self, symbol: str) -> None:
+        """Fetch ETF data and calculate returns as risk-free proxy."""
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="1y")
+            
+            if data.empty:
+                logger.warning(f"No data returned for {symbol}")
+                return
+            
+            # Calculate daily returns
+            returns = data['Close'].pct_change().dropna()
+            
+            # Calculate rolling 30-day annualized returns as risk-free proxy
+            rate_data = []
+            for i in range(30, len(returns)):
+                date = returns.index[i]
+                # Calculate 30-day return annualized
+                period_return = (1 + returns.iloc[i-30:i]).prod() - 1
+                annual_return = (1 + period_return) ** (365/30) - 1
+                
+                rate_data.append((
+                    symbol,
+                    date.strftime('%Y-%m-%d'),
+                    'etf_return',
+                    float(annual_return)  # Store as decimal
+                ))
+            
+            if rate_data:
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.executemany("""
+                        INSERT OR REPLACE INTO risk_free_rates 
+                        (symbol, date, rate_type, value)
+                        VALUES (?, ?, ?, ?)
+                    """, rate_data)
+                    conn.commit()
+                    logger.info(f"Cached {len(rate_data)} ETF return records for {symbol}")
+                    
+        except Exception as e:
+            logger.error(f"Error fetching ETF proxy data for {symbol}: {e}")
+
     def get_cache_stats(self) -> Dict[str, int]:
         """Get cache statistics."""
         with sqlite3.connect(self.db_path) as conn:

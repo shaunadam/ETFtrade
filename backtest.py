@@ -660,7 +660,25 @@ class BacktestEngine:
         
         # Risk-adjusted returns
         returns_series = pd.Series(self.daily_equity).pct_change().dropna()
-        sharpe_ratio = (returns_series.mean() * 252) / (returns_series.std() * np.sqrt(252)) if len(returns_series) > 1 else 0
+        
+        # Calculate Sharpe ratio with risk-free rate
+        if len(returns_series) > 1 and self.daily_dates:
+            # Get risk-free rate for the backtest period
+            start_date = self.daily_dates[0] if self.daily_dates else datetime.now() - timedelta(days=365)
+            end_date = self.daily_dates[-1] if self.daily_dates else datetime.now()
+            risk_free_rate = self.data_cache.get_risk_free_rate(start_date, end_date)
+            
+            # Convert annual risk-free rate to daily
+            daily_rf_rate = risk_free_rate / 252
+            
+            # Calculate excess returns
+            excess_returns = returns_series - daily_rf_rate
+            
+            # Sharpe ratio: (mean excess return * 252) / (std of returns * sqrt(252))
+            sharpe_ratio = (excess_returns.mean() * 252) / (returns_series.std() * np.sqrt(252))
+        else:
+            sharpe_ratio = 0
+        
         calmar_ratio = (total_return * 100) / (abs(max_drawdown) * 100) if max_drawdown != 0 else 0
         
         # Other metrics

@@ -136,6 +136,31 @@ def create_database_schema(cursor):
         )
     """)
     
+    # Risk-free rate metadata table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rate_metadata (
+            symbol TEXT PRIMARY KEY,
+            description TEXT NOT NULL,
+            source TEXT NOT NULL,
+            data_type TEXT NOT NULL CHECK (data_type IN ('yield', 'etf_proxy')),
+            priority INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Risk-free rates data table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS risk_free_rates (
+            symbol TEXT NOT NULL,
+            date DATE NOT NULL,
+            rate_type TEXT NOT NULL CHECK (rate_type IN ('yield', 'etf_return')),
+            value REAL NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(symbol, date),
+            FOREIGN KEY (symbol) REFERENCES rate_metadata (symbol)
+        )
+    """)
+    
     print("✅ Database schema created successfully")
 
 def load_etf_data(cursor, csv_file_path):
@@ -205,6 +230,24 @@ def insert_default_setups(cursor):
     
     print("✅ Default trade setups created")
 
+def insert_risk_free_rate_metadata(cursor):
+    """Insert risk-free rate source metadata."""
+    
+    rate_sources = [
+        ("^IRX", "3-Month Treasury Constant Maturity Rate", "FRED/Yahoo Finance", "yield", 1),
+        ("BIL", "SPDR Bloomberg 1-3 Month T-Bill ETF", "Yahoo Finance", "etf_proxy", 2),
+        ("^TNX", "10-Year Treasury Constant Maturity Rate", "FRED/Yahoo Finance", "yield", 3),
+        ("^FVX", "5-Year Treasury Constant Maturity Rate", "FRED/Yahoo Finance", "yield", 4)
+    ]
+    
+    for symbol, description, source, data_type, priority in rate_sources:
+        cursor.execute("""
+            INSERT OR REPLACE INTO rate_metadata (symbol, description, source, data_type, priority)
+            VALUES (?, ?, ?, ?, ?)
+        """, (symbol, description, source, data_type, priority))
+    
+    print("✅ Risk-free rate metadata created")
+
 def main():
     """Initialize the trading system database."""
     
@@ -227,6 +270,9 @@ def main():
         
         # Insert default setups
         insert_default_setups(cursor)
+        
+        # Insert risk-free rate metadata
+        insert_risk_free_rate_metadata(cursor)
         
         # Commit changes
         conn.commit()

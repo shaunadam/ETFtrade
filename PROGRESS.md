@@ -21,11 +21,14 @@
 - [x] **Regime-Aware Filtering**: Screening with current market regime validation
 - [x] **Multiple Trade Setups**: 8 comprehensive setups covering momentum, mean reversion, gaps, volatility, dividends
 - [x] **Export Functionality**: CSV and JSON export with timestamped filenames
+- [x] **Backtest Engine**: Signal-based and setup-based backtesting with performance metrics
+- [x] **Risk-Free Rate Integration**: Dedicated tables and accurate Sharpe ratio calculation
 - [ ] Build walk-forward backtesting engine
 - [ ] Add regime analysis to backtesting
 
 ## Phase 3: Trade Journal 📋
 - [x] Design SQLite database schema (instruments, regimes done, more required for each feature developed)
+- [x] **Risk-Free Rate Tables**: Dedicated rate_metadata and risk_free_rates tables with priority system
 - [ ] Implement trade journal functionality
 - [ ] Add correlation tracking
 
@@ -40,8 +43,8 @@
 - [ ] Future-proofing for individual stocks
 
 ## Current Status
-**Last Updated**: 2025-06-29  
-**Current Phase**: Phase 2 (Screener Complete with 8 Trade Setups) - Moving to Backtesting  
+**Last Updated**: 2025-06-30  
+**Current Phase**: Phase 2 (Backtest Engine Complete with Risk-Free Rate Integration)  
 **Next Steps**: Build walk-forward backtesting engine with regime analysis
 
 ## Major Achievements
@@ -51,12 +54,16 @@
 - **Regime Detection**: Comprehensive market regime analysis across 4 dimensions
 - **Performance**: Screening 50+ ETFs in seconds vs minutes
 - **Complete Trade Setup Suite**: 8 setups covering all major trading patterns and market conditions
+- **Backtest Engine**: Signal-based and setup-based backtesting with comprehensive performance metrics
+- **Risk-Free Rate System**: Dedicated database tables with 972+ rate records across 4 sources (^IRX, BIL, ^TNX, ^FVX)
 
 ## Technical Implementation
 - **Cache Architecture**: SQLite-based with healing strategy
-- **Database Tables**: Extended schema with price_data, indicators, market_regimes
+- **Database Tables**: Extended schema with price_data, indicators, market_regimes, risk_free_rates, rate_metadata
 - **CLI Interface**: argparse-based screener with multiple export formats
 - **Error Handling**: Graceful fallback to yfinance when cache misses
+- **Risk-Free Rate Architecture**: Clean separation with priority-based fallback system (^IRX → BIL → ^TNX → ^FVX)
+- **Accurate Sharpe Ratios**: Real-time Treasury yield integration for proper risk-adjusted performance measurement
 
 ## Notes
 - Using WSL2 Linux environment
