@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ETF/Stock Trading System{% endblock %}</title>
+    
+    <!-- Bootstrap 5 Dark Theme CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    
+    <!-- Plotly.js for Interactive Charts -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-dark text-light">
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <!-- Brand -->
+            <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">
+                <i class="bi bi-graph-up-arrow"></i>
+                ETF/Stock Trading System
+            </a>
+            
+            <!-- Mobile toggle button -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Navigation Links -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.index') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('data.index') }}">
+                            <i class="bi bi-database"></i> Data
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('screener.index') }}">
+                            <i class="bi bi-search"></i> Screener
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('journal.index') }}">
+                            <i class="bi bi-journal-text"></i> Journal
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('backtest.index') }}">
+                            <i class="bi bi-graph-up"></i> Backtest
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('regime.index') }}">
+                            <i class="bi bi-thermometer-half"></i> Regime
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- Right side nav items -->
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear"></i> Tools
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="{{ url_for('data.cache_stats') }}">
+                                <i class="bi bi-pie-chart"></i> Cache Stats
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('data.update_data') }}">
+                                <i class="bi bi-arrow-clockwise"></i> Update Data
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/api/health">
+                                <i class="bi bi-heart-pulse"></i> Health Check
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container-fluid mt-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Main Content -->
+    <main class="container-fluid py-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-3 mt-5">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-6">
+                    <small>
+                        <i class="bi bi-graph-up-arrow"></i>
+                        ETF/Stock Trading System - Dark Theme
+                    </small>
+                </div>
+                <div class="col-md-6 text-end">
+                    <small>
+                        <i class="bi bi-clock"></i>
+                        Last Updated: <span id="lastUpdated">Loading...</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Page-specific JavaScript -->
+    {% block extra_js %}{% endblock %}
+
+    <script>
+        // Update last updated timestamp
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+        });
+        
+        // Global Plotly configuration for dark theme
+        window.PLOTLY_CONFIG = {
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
+            toImageButtonOptions: {
+                format: 'png',
+                filename: 'chart',
+                height: 600,
+                width: 1000,
+                scale: 1
+            }
+        };
+        
+        // Global Plotly layout for dark theme
+        window.PLOTLY_LAYOUT_DARK = {
+            paper_bgcolor: '#212529',
+            plot_bgcolor: '#343a40',
+            font: { color: '#ffffff' },
+            xaxis: { 
+                gridcolor: '#495057', 
+                zerolinecolor: '#6c757d',
+                color: '#ffffff'
+            },
+            yaxis: { 
+                gridcolor: '#495057', 
+                zerolinecolor: '#6c757d',
+                color: '#ffffff'
+            },
+            legend: {
+                bgcolor: 'rgba(0,0,0,0)',
+                bordercolor: '#6c757d',
+                font: { color: '#ffffff' }
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Backtest Engine - ETF/Stock Trading System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-graph-up text-trading-blue"></i>
+            Backtest Engine
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-clock-history display-1 text-trading-blue mb-3"></i>
+                <h3 class="text-light">Advanced Backtesting Engine</h3>
+                <p class="text-muted mb-4">
+                    Walk-forward backtesting with regime analysis, parameter optimization,
+                    and comprehensive performance metrics for strategy validation.
+                </p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-arrow-right-circle text-trading-green mb-2"></i>
+                                <h5>Walk-Forward Analysis</h5>
+                                <p class="small text-muted">Time-based validation with rolling optimization</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-thermometer-half text-trading-yellow mb-2"></i>
+                                <h5>Regime Analysis</h5>
+                                <p class="small text-muted">Performance breakdown by market regime</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-bar-chart text-trading-blue mb-2"></i>
+                                <h5>Performance Metrics</h5>
+                                <p class="small text-muted">Sharpe ratio, drawdown, and benchmark comparison</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <span class="badge bg-warning fs-6">Coming Soon</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

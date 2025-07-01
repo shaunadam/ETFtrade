@@ -11,6 +11,12 @@ pytest>=7.4.0
 ruff>=0.0.280
 mypy>=1.5.0
 
+# Flask Web Framework
+flask>=2.3.0
+flask-sqlalchemy>=3.0.0
+python-dotenv>=1.0.0
+wtforms>=3.0.0
+
 # Additional Dependencies
 requests>=2.31.0
 scipy>=1.11.0

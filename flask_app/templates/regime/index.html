@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Market Regime - ETF/Stock Trading System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-thermometer-half text-trading-yellow"></i>
+            Market Regime Analysis
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-speedometer display-1 text-trading-yellow mb-3"></i>
+                <h3 class="text-light">Multi-Dimensional Regime Detection</h3>
+                <p class="text-muted mb-4">
+                    Comprehensive market regime analysis across volatility, trend, sector rotation,
+                    and risk sentiment to optimize trading strategy selection.
+                </p>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-activity text-trading-red mb-2"></i>
+                                <h5>Volatility</h5>
+                                <p class="small text-muted">VIX-based volatility regime detection</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-trending-up text-trading-green mb-2"></i>
+                                <h5>Trend</h5>
+                                <p class="small text-muted">Market trend analysis vs key moving averages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-arrow-left-right text-trading-blue mb-2"></i>
+                                <h5>Sector Rotation</h5>
+                                <p class="small text-muted">Growth vs Value rotation patterns</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-body">
+                                <i class="bi bi-shield-check text-trading-yellow mb-2"></i>
+                                <h5>Risk Sentiment</h5>
+                                <p class="small text-muted">Risk-on vs Risk-off market conditions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <span class="badge bg-warning fs-6">Coming Soon</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
