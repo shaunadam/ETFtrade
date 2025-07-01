@@ -38,6 +38,10 @@ class SetupType(Enum):
     RELATIVE_STRENGTH_MOMENTUM = "relative_strength_momentum"
     VOLATILITY_CONTRACTION = "volatility_contraction"
     DIVIDEND_DISTRIBUTION_PLAY = "dividend_distribution_play"
+    ELDER_TRIPLE_SCREEN = "elder_triple_screen"
+    INSTITUTIONAL_VOLUME_CLIMAX = "institutional_volume_climax"
+    FAILED_BREAKDOWN_REVERSAL = "failed_breakdown_reversal"
+    EARNINGS_EXPECTATION_RESET = "earnings_expectation_reset"
 
 
 @dataclass
@@ -1041,6 +1045,561 @@ class DividendDistributionPlaySetup(BaseSetup):
         return True, confidence
 
 
+class ElderTripleScreenSetup(BaseSetup):
+    """Elder's Triple Screen setup - multi-timeframe trend following with precise entry timing."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                # Get longer period for weekly analysis
+                data = self.get_market_data(symbol, period="1y")
+                if len(data) < 100:
+                    continue
+                
+                signal = self._analyze_triple_screen(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_triple_screen(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze using Elder's Triple Screen methodology."""
+        # Screen 1: Weekly trend filter (using 13-week EMA approximation)
+        weekly_ema = data['Close'].ewm(span=65).mean()  # 13 weeks * 5 days
+        current_price = data['Close'].iloc[-1]
+        
+        # Only trade long positions when above weekly EMA
+        if current_price < weekly_ema.iloc[-1]:
+            return None
+        
+        # Screen 2: Daily oscillator timing (RSI oversold)
+        rsi = data['RSI'].iloc[-1]
+        stoch_k = self._calculate_stochastic(data)
+        
+        # Look for oversold conditions
+        if not (rsi < 30 or stoch_k < 20):
+            return None
+        
+        # Screen 3: Intraday entry trigger (break above previous day's high)
+        if len(data) < 2:
+            return None
+            
+        prev_high = data['High'].iloc[-2]
+        current_volume = data['Volume'].iloc[-1]
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        
+        # Entry condition: current price above yesterday's high with volume
+        if current_price <= prev_high:
+            return None
+        
+        # Volume confirmation (1.5x+ average)
+        volume_ratio = current_volume / avg_volume
+        if volume_ratio < 1.5:
+            return None
+        
+        # Position sizing and risk management
+        atr = data['ATR'].iloc[-1]
+        recent_swing_low = data['Low'].rolling(10).min().iloc[-1]
+        stop_loss = max(recent_swing_low, current_price - (2 * atr))
+        target_price = current_price + (3 * atr)  # 3:2 reward/risk
+        
+        # Confidence calculation
+        confidence = self._calculate_triple_screen_confidence(regime, rsi, stoch_k, volume_ratio)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.ELDER_TRIPLE_SCREEN,
+            signal_strength=SignalStrength.STRONG if volume_ratio > 2.0 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Triple screen: weekly uptrend, RSI {rsi:.1f}, {volume_ratio:.1f}x volume"
+        )
+    
+    def _calculate_stochastic(self, data: pd.DataFrame, k_period: int = 14) -> float:
+        """Calculate %K Stochastic oscillator."""
+        if len(data) < k_period:
+            return 50.0
+        
+        recent_data = data.tail(k_period)
+        highest_high = recent_data['High'].max()
+        lowest_low = recent_data['Low'].min()
+        current_close = data['Close'].iloc[-1]
+        
+        if highest_high == lowest_low:
+            return 50.0
+        
+        return 100 * (current_close - lowest_low) / (highest_high - lowest_low)
+    
+    def _calculate_triple_screen_confidence(self, regime: RegimeData, rsi: float, stoch_k: float, volume_ratio: float) -> float:
+        """Calculate confidence for triple screen signal."""
+        confidence = 0.6  # Base confidence
+        
+        # More oversold = higher confidence
+        if rsi < 25 or stoch_k < 15:
+            confidence += 0.2
+        elif rsi < 30 or stoch_k < 20:
+            confidence += 0.1
+        
+        # Volume confirmation
+        if volume_ratio > 2.5:
+            confidence += 0.2
+        elif volume_ratio > 2.0:
+            confidence += 0.15
+        elif volume_ratio > 1.8:
+            confidence += 0.1
+        
+        # Trending regimes are better
+        if regime.trend_regime == TrendRegime.STRONG_UPTREND:
+            confidence += 0.15
+        elif regime.trend_regime == TrendRegime.MILD_UPTREND:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if triple screen signal is suitable for current regime."""
+        confidence = 0.7
+        
+        # Works best in trending markets
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.2
+        elif regime.trend_regime == TrendRegime.DOWNTREND:
+            confidence -= 0.4
+        
+        return confidence > 0.5, confidence
+
+
+class InstitutionalVolumeClimaxSetup(BaseSetup):
+    """Institutional volume climax setup - detect accumulation during retail panic selling."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="6mo")
+                if len(data) < 50:
+                    continue
+                
+                signal = self._analyze_volume_climax(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_volume_climax(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for institutional volume climax opportunity."""
+        if len(data) < 5:
+            return None
+        
+        current_price = data['Close'].iloc[-1]
+        current_volume = data['Volume'].iloc[-1]
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        
+        # Check for recent high volume selling (2-3 days)
+        recent_volumes = data['Volume'].tail(3)
+        recent_closes = data['Close'].tail(3)
+        volume_ratios = recent_volumes / avg_volume
+        
+        # Look for 2+ days of high volume (3x+ average)
+        high_volume_days = sum(1 for ratio in volume_ratios if ratio >= 3.0)
+        if high_volume_days < 2:
+            return None
+        
+        # Check for price decline during high volume
+        price_decline = (recent_closes.iloc[-1] - recent_closes.iloc[0]) / recent_closes.iloc[0]
+        if price_decline > -0.02:  # Need at least 2% decline
+            return None
+        
+        # Check for support level holding
+        sma50 = data['SMA50'].iloc[-1]
+        prev_low = data['Low'].rolling(20).min().iloc[-2]  # Exclude today
+        support_level = max(sma50, prev_low)
+        
+        # Price should hold above support despite selling pressure
+        if current_price < support_level * 0.98:  # 2% buffer
+            return None
+        
+        # Look for absorption signal (volume drying up, price bouncing)
+        if current_volume > avg_volume * 1.5:  # Volume should be below average
+            return None
+        
+        # Price should close higher than previous day
+        if len(data) > 1 and current_price <= data['Close'].iloc[-2]:
+            return None
+        
+        # Position sizing and risk management
+        atr = data['ATR'].iloc[-1]
+        stop_loss = support_level * 0.96  # Below support level
+        target_price = current_price + (2.5 * atr)  # Conservative target
+        
+        # Confidence calculation
+        max_volume_ratio = max(volume_ratios)
+        confidence = self._calculate_climax_confidence(regime, high_volume_days, max_volume_ratio, price_decline)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.INSTITUTIONAL_VOLUME_CLIMAX,
+            signal_strength=SignalStrength.STRONG if max_volume_ratio > 4.0 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Volume climax: {high_volume_days} high vol days, max {max_volume_ratio:.1f}x, decline {price_decline:.1%}"
+        )
+    
+    def _calculate_climax_confidence(self, regime: RegimeData, high_vol_days: int, max_vol_ratio: float, price_decline: float) -> float:
+        """Calculate confidence for volume climax signal."""
+        confidence = 0.5  # Base confidence
+        
+        # More high volume days = higher confidence
+        if high_vol_days >= 3:
+            confidence += 0.2
+        
+        # Higher volume spikes = higher confidence
+        if max_vol_ratio > 5.0:
+            confidence += 0.2
+        elif max_vol_ratio > 4.0:
+            confidence += 0.15
+        elif max_vol_ratio > 3.5:
+            confidence += 0.1
+        
+        # Larger decline = better reversal potential
+        abs_decline = abs(price_decline)
+        if abs_decline > 0.05:
+            confidence += 0.15
+        elif abs_decline > 0.03:
+            confidence += 0.1
+        
+        # Works better in volatile markets
+        if regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence += 0.1
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if volume climax signal is suitable for current regime."""
+        confidence = 0.6
+        
+        # Works across most regimes, but better in volatile periods
+        if regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence += 0.2
+        
+        return True, confidence
+
+
+class FailedBreakdownReversalSetup(BaseSetup):
+    """Failed breakdown reversal setup - capitalize on bear traps and quick reversals."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="6mo")
+                if len(data) < 50:
+                    continue
+                
+                signal = self._analyze_failed_breakdown(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_failed_breakdown(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for failed breakdown reversal opportunity."""
+        if len(data) < 10:
+            return None
+        
+        current_price = data['Close'].iloc[-1]
+        current_volume = data['Volume'].iloc[-1]
+        sma50 = data['SMA50'].iloc[-1]
+        
+        # Identify key support levels
+        support_levels = []
+        support_levels.append(sma50)
+        
+        # Add trend line support (simplified)
+        recent_lows = data['Low'].rolling(20).min()
+        support_levels.append(recent_lows.iloc[-1])
+        
+        # Previous significant low
+        prev_low = data['Low'].rolling(50).min().iloc[-10]  # Exclude recent data
+        support_levels.append(prev_low)
+        
+        # Find the most relevant support level
+        key_support = max([s for s in support_levels if s < current_price * 1.02])
+        
+        # Look for recent breakdown within last 5 days
+        breakdown_found = False
+        breakdown_low = None
+        breakdown_volume = None
+        
+        for i in range(1, min(6, len(data))):
+            past_close = data['Close'].iloc[-i]
+            past_low = data['Low'].iloc[-i]
+            past_volume = data['Volume'].iloc[-i]
+            
+            # Check if price broke below support on volume
+            if past_low < key_support and past_volume > data['Volume'].rolling(20).mean().iloc[-i] * 1.3:
+                breakdown_found = True
+                breakdown_low = past_low
+                breakdown_volume = past_volume
+                break
+        
+        if not breakdown_found:
+            return None
+        
+        # Check for reversal - price back above breakdown level
+        if current_price <= key_support:
+            return None
+        
+        # Volume confirmation on reversal day
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        volume_ratio = current_volume / avg_volume
+        if volume_ratio < 1.2:
+            return None
+        
+        # Calculate time since breakdown (should be recent)
+        days_since_breakdown = 1
+        for i in range(1, min(6, len(data))):
+            if data['Low'].iloc[-i] == breakdown_low:
+                days_since_breakdown = i
+                break
+        
+        if days_since_breakdown > 3:  # Too long ago
+            return None
+        
+        # Position sizing and risk management
+        atr = data['ATR'].iloc[-1]
+        stop_loss = breakdown_low * 0.98  # Below failed breakdown low
+        
+        # Target previous resistance or 2.5 ATR
+        recent_high = data['High'].rolling(20).max().iloc[-1]
+        target_price = min(recent_high, current_price + (2.5 * atr))
+        
+        # Confidence calculation
+        confidence = self._calculate_breakdown_confidence(regime, volume_ratio, days_since_breakdown, current_price, key_support)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.FAILED_BREAKDOWN_REVERSAL,
+            signal_strength=SignalStrength.STRONG if volume_ratio > 2.0 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Failed breakdown reversal: support ${key_support:.2f}, {days_since_breakdown}d ago, {volume_ratio:.1f}x vol"
+        )
+    
+    def _calculate_breakdown_confidence(self, regime: RegimeData, volume_ratio: float, days_since: int, current_price: float, support_level: float) -> float:
+        """Calculate confidence for failed breakdown signal."""
+        confidence = 0.5  # Base confidence
+        
+        # Volume confirmation
+        if volume_ratio > 2.5:
+            confidence += 0.2
+        elif volume_ratio > 2.0:
+            confidence += 0.15
+        elif volume_ratio > 1.5:
+            confidence += 0.1
+        
+        # Quicker reversal = higher confidence
+        if days_since == 1:
+            confidence += 0.2
+        elif days_since == 2:
+            confidence += 0.1
+        
+        # Distance above support
+        recovery_pct = (current_price - support_level) / support_level
+        if recovery_pct > 0.02:
+            confidence += 0.15
+        elif recovery_pct > 0.01:
+            confidence += 0.1
+        
+        # Works well in trending markets (bear traps)
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.15
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if failed breakdown signal is suitable for current regime."""
+        confidence = 0.6
+        
+        # Works well in trending markets
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.2
+        
+        return True, confidence
+
+
+class EarningsExpectationResetSetup(BaseSetup):
+    """Earnings expectation reset setup - trade technical patterns after earnings uncertainty is removed."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="3mo")
+                if len(data) < 30:
+                    continue
+                
+                signal = self._analyze_earnings_reset(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_earnings_reset(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for post-earnings technical setup opportunity."""
+        # Simplified implementation - detect recent volatility spike and subsequent calm
+        current_price = data['Close'].iloc[-1]
+        atr = data['ATR'].iloc[-1]
+        
+        # Look for recent volatility spike (earnings-like pattern)
+        atr_history = data['ATR'].rolling(20).mean()
+        recent_atr_spike = False
+        
+        # Check last 10 days for ATR spike above 20-day average
+        for i in range(1, min(11, len(data))):
+            daily_atr = data['ATR'].iloc[-i]
+            avg_atr = atr_history.iloc[-i]
+            
+            if daily_atr > avg_atr * 1.5:  # 50% above average
+                recent_atr_spike = True
+                break
+        
+        if not recent_atr_spike:
+            return None
+        
+        # Current ATR should be normalized (no longer spiking)
+        current_avg_atr = atr_history.iloc[-1]
+        if atr > current_avg_atr * 1.3:  # Still elevated
+            return None
+        
+        # Look for one of the existing technical setups to emerge
+        # This is a meta-setup that enhances other setups after earnings
+        
+        # Check for trend pullback pattern
+        sma20 = data['SMA20'].iloc[-1]
+        sma50 = data['SMA50'].iloc[-1]
+        
+        setup_pattern = None
+        confidence_boost = 0.0
+        
+        # Pattern 1: Trend continuation after pullback
+        if current_price > sma50 and current_price < sma20:
+            recent_high = data['High'].rolling(10).max().iloc[-1]
+            pullback_pct = (recent_high - current_price) / recent_high
+            
+            if 0.02 <= pullback_pct <= 0.06:  # 2-6% pullback
+                setup_pattern = "post_earnings_pullback"
+                confidence_boost = 0.15
+        
+        # Pattern 2: Breakout above consolidation
+        elif current_price > sma20:
+            recent_range = data['High'].rolling(5).max().iloc[-1] - data['Low'].rolling(5).min().iloc[-1]
+            range_pct = recent_range / current_price
+            
+            if range_pct < 0.03:  # Tight consolidation
+                setup_pattern = "post_earnings_breakout"
+                confidence_boost = 0.1
+        
+        if not setup_pattern:
+            return None
+        
+        # Position sizing and risk management
+        if setup_pattern == "post_earnings_pullback":
+            stop_loss = current_price - (2 * atr)
+            target_price = current_price + (2.5 * atr)
+        else:  # breakout
+            stop_loss = sma20 * 0.98
+            target_price = current_price + (2 * atr)
+        
+        # Base confidence from reduced uncertainty
+        confidence = 0.6 + confidence_boost
+        
+        # Regime adjustments
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.1
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.15
+        
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss)
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.EARNINGS_EXPECTATION_RESET,
+            signal_strength=SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Post-earnings {setup_pattern}, volatility normalized"
+        )
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if earnings reset signal is suitable for current regime."""
+        confidence = 0.6
+        
+        # Works better in stable regimes
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            confidence += 0.2
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.2
+        
+        return confidence > 0.4, confidence
+
+
 class SetupManager:
     """Manages all trade setups and scanning."""
     
@@ -1054,7 +1613,11 @@ class SetupManager:
             SetupType.GAP_FILL_REVERSAL: GapFillReversalSetup(db_path),
             SetupType.RELATIVE_STRENGTH_MOMENTUM: RelativeStrengthMomentumSetup(db_path),
             SetupType.VOLATILITY_CONTRACTION: VolatilityContractionSetup(db_path),
-            SetupType.DIVIDEND_DISTRIBUTION_PLAY: DividendDistributionPlaySetup(db_path)
+            SetupType.DIVIDEND_DISTRIBUTION_PLAY: DividendDistributionPlaySetup(db_path),
+            SetupType.ELDER_TRIPLE_SCREEN: ElderTripleScreenSetup(db_path),
+            SetupType.INSTITUTIONAL_VOLUME_CLIMAX: InstitutionalVolumeClimaxSetup(db_path),
+            SetupType.FAILED_BREAKDOWN_REVERSAL: FailedBreakdownReversalSetup(db_path),
+            SetupType.EARNINGS_EXPECTATION_RESET: EarningsExpectationResetSetup(db_path)
         }
     
     def get_all_symbols(self) -> List[str]:

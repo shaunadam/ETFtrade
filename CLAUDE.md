@@ -78,6 +78,10 @@ python screener.py --setup gap_fill_reversal             # Gap reversal opportun
 python screener.py --setup relative_strength_momentum    # Relative strength plays
 python screener.py --setup volatility_contraction        # Low volatility setups
 python screener.py --setup dividend_distribution_play    # Dividend timing plays
+python screener.py --setup elder_triple_screen           # Multi-timeframe trend setups
+python screener.py --setup institutional_volume_climax   # Institutional accumulation setups
+python screener.py --setup failed_breakdown_reversal     # Bear trap reversal setups
+python screener.py --setup earnings_expectation_reset    # Post-earnings technical setups
 python journal.py --open-trades --correlations           # Check current positions
 python report.py --daily --vs-spy                        # Quick performance check
 
@@ -107,6 +111,8 @@ python journal.py --backup-db --compress                 # Backup trade data
 # Analysis & reports
 python report.py --regime-performance --since 2023-01-01 # Performance by regime
 python report.py --setup-analysis --export-charts        # Setup effectiveness
+python analysis/treasury_analysis.py                     # Treasury analysis tools
+python analysis/treasury_research.py                     # Treasury research tools
 jupyter notebook reports/weekly_review.ipynb             # Interactive analysis
 
 # Development & testing
@@ -137,6 +143,10 @@ sqlite3 journal.db ".schema"                            # View database schema
 - **Relative Strength Momentum**: Buy ETFs outperforming SPY during weakness
 - **Volatility Contraction**: Trade after ATR compression before expansion
 - **Dividend/Distribution Play**: Technical setups in dividend sectors during stable regimes
+- **Elder's Triple Screen**: Multi-timeframe trend following with precise entry timing
+- **Institutional Volume Climax**: Detect accumulation during retail panic selling
+- **Failed Breakdown Reversal**: Capitalize on bear traps and quick reversals
+- **Earnings Expectation Reset**: Trade technical patterns after earnings uncertainty is removed
 
 ### Risk Management Rules
 - Max 2% capital risk per trade
