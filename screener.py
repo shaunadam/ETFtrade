@@ -36,7 +36,7 @@ class ETFScreener:
     def screen_etfs(self, 
                    setup_filter: Optional[str] = None,
                    min_confidence: float = 0.5,
-                   max_signals: int = 10,
+                   max_signals: int = 100,
                    regime_filter: bool = True) -> List[TradeSignal]:
         """
         Screen ETFs for trade opportunities.
@@ -279,8 +279,7 @@ Examples:
     if args.update_data or args.force_refresh:
         print("🔄 Updating market data...")
         screener.data_cache.update_market_data(force_full_refresh=args.force_refresh)
-        if not any([args.export_csv, args.export_json]):
-            return
+        print("✅ Market data updated successfully")
     
     # Screen for signals
     signals = screener.screen_etfs(

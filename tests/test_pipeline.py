@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Test pipeline: screener -> backtest for triggered signals only.
+Test pipeline for enhanced backtest engine.
 """
 
 from datetime import datetime
 from screener import ETFScreener
-from backtest import BacktestEngine
+from backtest import BacktestEngine, OptimizationParameters
 
 def test_pipeline():
     """Test the screener -> backtest pipeline."""
@@ -79,5 +79,51 @@ def test_pipeline():
     print(f"\n✅ Pipeline test complete!")
     print(f"📊 Successfully tested {len(signals)} triggered signal(s)")
 
+def test_enhanced_features():
+    """Test enhanced features: parameter optimization and regime analysis."""
+    
+    print("\n" + "="*60)
+    print("TESTING ENHANCED BACKTEST FEATURES")
+    print("="*60)
+    
+    # Test 1: Parameter optimization classes
+    print("\n1. Testing parameter optimization classes...")
+    params = OptimizationParameters(
+        stop_loss_pct=0.04,
+        profit_target_r=2.5,
+        confidence_threshold=0.7
+    )
+    print(f"   ✅ Created params: stop_loss={params.stop_loss_pct:.1%}, "
+          f"target={params.profit_target_r:.1f}R, confidence={params.confidence_threshold:.2f}")
+    
+    # Test 2: CSV backtest with existing signals
+    print("\n2. Testing CSV-based backtesting...")
+    try:
+        engine = BacktestEngine()
+        csv_file = "etf_signals_20250630_080303.csv"
+        start_date = datetime(2025, 6, 1)
+        end_date = datetime(2025, 6, 30)
+        
+        results = engine.backtest_from_csv(csv_file, start_date, end_date)
+        
+        perf = results['performance']
+        print(f"   ✅ CSV backtest completed:")
+        print(f"      - Total trades: {perf.total_trades}")
+        print(f"      - Win rate: {perf.win_rate:.1%}")
+        print(f"      - Signals tested: {results.get('signals_tested', 0)}")
+        
+    except Exception as e:
+        print(f"   ⚠️ CSV backtest error: {e}")
+    
+    # Test 3: Basic functionality check
+    print("\n3. Testing enhanced engine initialization...")
+    engine = BacktestEngine()
+    print(f"   ✅ Engine with optimization params: {type(engine.current_params).__name__}")
+    print(f"   ✅ Default stop loss: {engine.current_params.stop_loss_pct:.1%}")
+    print(f"   ✅ Default target: {engine.current_params.profit_target_r:.1f}R")
+    
+    print("\n✅ Enhanced features test complete!")
+
 if __name__ == "__main__":
     test_pipeline()
+    test_enhanced_features()

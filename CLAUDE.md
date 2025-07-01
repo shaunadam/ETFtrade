@@ -187,7 +187,7 @@ python data_cache.py
 2. **Phase 2**: Screener + Backtest Engine (screener complete, backtest pending)
 3. **Phase 3**: Trade Journal (SQLite database, correlation tracking)
 4. **Phase 4**: Reporting Tools (performance vs benchmarks)
-5. **Phase 5**: Optimization & Expansion (strategy refinement)
+5. **Phase 5**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
 
 **Progress Tracking**: See [PROGRESS.md](PROGRESS.md) for detailed development status and completed tasks.
 
@@ -197,6 +197,15 @@ python data_cache.py
 - Positive performance across market regimes
 - <30 minutes daily maintenance
 - Stable walk-forward parameters
+
+## Future Enhancements (Post Phase 5)
+
+### Dynamic Production Parameter Optimization
+- **Adaptive Screening**: Monthly/quarterly parameter optimization for live screening
+- **Risk Controls**: Statistical significance requirements and overfitting prevention
+- **Regime-Aware Adaptation**: Parameter updates based on current market regime
+- **Live Walk-Forward**: Continuous optimization using rolling historical performance
+- **Portfolio-Level Optimization**: Holistic parameter tuning across all setups and positions
 
 ## Development Preferences
 - **Commit Messages**: Keep simple, 1 sentence, no "Generated with Claude Code" footers

@@ -165,7 +165,44 @@ def create_database_schema(cursor):
         )
     """)
     
+    # Create performance indexes
+    create_database_indexes(cursor)
+    
     print("✅ Database schema created successfully")
+
+def create_database_indexes(cursor):
+    """Create performance indexes for all tables."""
+    
+    indexes = [
+        # Single column indexes for frequent WHERE clauses
+        "CREATE INDEX IF NOT EXISTS idx_price_data_symbol ON price_data(symbol)",
+        "CREATE INDEX IF NOT EXISTS idx_price_data_date ON price_data(date)",
+        "CREATE INDEX IF NOT EXISTS idx_indicators_symbol ON indicators(symbol)",
+        "CREATE INDEX IF NOT EXISTS idx_indicators_date ON indicators(date)",
+        "CREATE INDEX IF NOT EXISTS idx_risk_free_rates_symbol ON risk_free_rates(symbol)",
+        "CREATE INDEX IF NOT EXISTS idx_risk_free_rates_date ON risk_free_rates(date)",
+        "CREATE INDEX IF NOT EXISTS idx_instruments_type ON instruments(type)",
+        "CREATE INDEX IF NOT EXISTS idx_instruments_symbol ON instruments(symbol)",
+        
+        # Composite indexes for common query patterns
+        "CREATE INDEX IF NOT EXISTS idx_price_data_symbol_date ON price_data(symbol, date)",
+        "CREATE INDEX IF NOT EXISTS idx_indicators_symbol_date ON indicators(symbol, date)",
+        "CREATE INDEX IF NOT EXISTS idx_indicators_symbol_name ON indicators(symbol, indicator_name)",
+        "CREATE INDEX IF NOT EXISTS idx_risk_free_rates_symbol_date ON risk_free_rates(symbol, date)",
+        
+        # Trade-related indexes for future use
+        "CREATE INDEX IF NOT EXISTS idx_trades_instrument_id ON trades(instrument_id)",
+        "CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)",
+        "CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date)",
+        "CREATE INDEX IF NOT EXISTS idx_snapshots_trade_id ON snapshots(trade_id)",
+        "CREATE INDEX IF NOT EXISTS idx_correlations_date ON correlations(date_calculated)",
+        "CREATE INDEX IF NOT EXISTS idx_market_regimes_date ON market_regimes(date)"
+    ]
+    
+    for index_sql in indexes:
+        cursor.execute(index_sql)
+    
+    print("✅ Database indexes created successfully")
 
 def load_etf_data(cursor, csv_file_path):
     """Load ETF data from CSV into instruments table."""

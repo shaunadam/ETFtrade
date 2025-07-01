@@ -42,6 +42,12 @@
 - [ ] Parameter optimization tools
 - [ ] Future-proofing for individual stocks
 
+## Future Enhancements (Post Phase 5) 🔮
+- [ ] **Adaptive Production Parameter Optimization**: Live parameter tuning for screener based on rolling performance
+- [ ] **Regime-Aware Parameter Adaptation**: Dynamic parameter adjustment based on current market regime
+- [ ] **Overfitting Prevention Controls**: Statistical significance requirements and stability checks
+- [ ] **Portfolio-Level Optimization**: Holistic parameter tuning across all setups and correlations
+
 ## Current Status
 **Last Updated**: 2025-06-30  
 **Current Phase**: Phase 2 (Enhanced with First-Time Setup & Data Bootstrapping)  

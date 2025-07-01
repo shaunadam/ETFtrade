@@ -43,6 +43,7 @@ from typing import Dict, List, Optional, Tuple, NamedTuple
 from enum import Enum
 import pandas as pd
 import numpy as np
+from itertools import product
 
 from data_cache import DataCache
 from regime_detection import RegimeDetector, RegimeData
@@ -79,6 +80,29 @@ class BacktestTrade:
     r_multiple: Optional[float] = None
     pnl: Optional[float] = None
     days_held: Optional[int] = None
+
+
+@dataclass
+class OptimizationParameters:
+    """Parameters to optimize during walk-forward validation."""
+    stop_loss_pct: float = 0.05  # 5% stop loss
+    profit_target_r: float = 2.0  # 2R profit target
+    confidence_threshold: float = 0.6  # Minimum confidence for signals
+    max_holding_days: int = 60  # Maximum days to hold position
+    position_size_method: str = "fixed_risk"  # fixed_risk, kelly, equal_weight
+
+
+@dataclass
+class RegimePerformance:
+    """Performance metrics broken down by market regime."""
+    volatility_low: Optional['PerformanceMetrics'] = None
+    volatility_medium: Optional['PerformanceMetrics'] = None  
+    volatility_high: Optional['PerformanceMetrics'] = None
+    trend_up: Optional['PerformanceMetrics'] = None
+    trend_neutral: Optional['PerformanceMetrics'] = None
+    trend_down: Optional['PerformanceMetrics'] = None
+    risk_on: Optional['PerformanceMetrics'] = None
+    risk_off: Optional['PerformanceMetrics'] = None
 
 
 @dataclass
@@ -124,6 +148,10 @@ class BacktestEngine:
         # Performance tracking
         self.daily_equity = []
         self.daily_dates = []
+        
+        # Optimization parameters
+        self.current_params = OptimizationParameters()
+        self.regime_performance_tracking = []
     
     def backtest_from_signals(self,
                              signals: List[TradeSignal],
@@ -299,7 +327,7 @@ class BacktestEngine:
                                   trading_days: List[datetime],
                                   setup_types: List[SetupType],
                                   regime_aware: bool) -> Dict:
-        """Run walk-forward backtesting to prevent overfitting."""
+        """Run walk-forward backtesting with parameter optimization."""
         
         # Walk-forward parameters
         training_period_days = 252  # 1 year training
@@ -307,6 +335,7 @@ class BacktestEngine:
         
         results = []
         total_trades = []
+        optimization_history = []
         
         # Split into walk-forward periods
         for i in range(0, len(trading_days), test_period_days):
@@ -317,15 +346,35 @@ class BacktestEngine:
             
             if test_start >= len(trading_days):
                 break
+            
+            training_days = trading_days[training_start:training_end] if training_end > training_start else []
+            test_days = trading_days[test_start:test_end]
                 
             print(f"Walk-forward period: {trading_days[test_start].date()} to {trading_days[test_end-1].date()}")
-                
-            # Train on historical data (for parameter optimization - future enhancement)
-            # For now, use standard parameters
             
-            # Test on out-of-sample period
-            test_days = trading_days[test_start:test_end]
+            # Optimize parameters on training data
+            if training_days:
+                print(f"  Optimizing on training data: {training_days[0].date()} to {training_days[-1].date()}")
+                optimal_params = self._optimize_parameters(training_days, setup_types, regime_aware)
+                optimization_history.append({
+                    'period': f"{training_days[0].date()}_{training_days[-1].date()}",
+                    'optimal_params': asdict(optimal_params)
+                })
+            else:
+                # Use default parameters for first period
+                optimal_params = OptimizationParameters()
+                optimization_history.append({
+                    'period': 'default_first_period',
+                    'optimal_params': asdict(optimal_params)
+                })
+            
+            # Apply optimized parameters to test period
+            self.current_params = optimal_params
+            print(f"  Testing with: stop_loss={optimal_params.stop_loss_pct:.1%}, target={optimal_params.profit_target_r:.1f}R, conf={optimal_params.confidence_threshold:.2f}")
+            
+            # Test on out-of-sample period with optimized parameters
             period_result = self._run_standard_backtest(test_days, setup_types, regime_aware)
+            period_result['optimization_params'] = asdict(optimal_params)
             
             results.append(period_result)
             total_trades.extend(period_result['trades'])
@@ -336,7 +385,9 @@ class BacktestEngine:
         return {
             'performance': combined_performance,
             'trades': total_trades,
-            'walk_forward_results': results
+            'walk_forward_results': results,
+            'optimization_history': optimization_history,
+            'regime_performance': self._calculate_regime_performance()
         }
     
     def _get_signals_for_date_from_provided(self,
@@ -488,29 +539,32 @@ class BacktestEngine:
         return True
     
     def _enter_trade(self, signal: TradeSignal, entry_date: datetime):
-        """Enter a new trade position."""
+        """Enter a new trade position using optimized parameters."""
         
         # Calculate position size based on risk
         current_capital = self.daily_equity[-1] if self.daily_equity else self.initial_capital
         max_risk_amount = current_capital * self.max_risk_per_trade
         
-        # Use signal's position size if within risk limits
-        risk_amount = signal.position_size * signal.risk_per_share
-        if risk_amount > max_risk_amount:
-            # Scale down position to fit risk limits
-            signal.position_size = max_risk_amount / signal.risk_per_share
+        # Apply optimized stop loss and target parameters
+        entry_price = signal.entry_price
+        optimized_stop_loss = entry_price * (1 - self.current_params.stop_loss_pct)
+        optimized_target = entry_price * (1 + self.current_params.stop_loss_pct * self.current_params.profit_target_r)
         
-        # Create trade record
+        # Calculate position size based on optimized stop loss
+        risk_per_share = entry_price - optimized_stop_loss
+        position_size = max_risk_amount / risk_per_share if risk_per_share > 0 else signal.position_size
+        
+        # Create trade record with optimized parameters
         trade = BacktestTrade(
             trade_id=self.trade_id_counter,
             symbol=signal.symbol,
             setup_type=signal.setup_type,
             entry_date=entry_date,
-            entry_price=signal.entry_price,
-            position_size=signal.position_size,
-            stop_loss=signal.stop_loss,
-            target_price=signal.target_price,
-            risk_per_share=signal.risk_per_share,
+            entry_price=entry_price,
+            position_size=position_size,
+            stop_loss=optimized_stop_loss,
+            target_price=optimized_target,
+            risk_per_share=risk_per_share,
             confidence=signal.confidence,
             regime_at_entry=signal.regime_context
         )
@@ -518,7 +572,7 @@ class BacktestEngine:
         self.current_positions.append(trade)
         self.trade_id_counter += 1
         
-        print(f"Entered {signal.setup_type.value} trade: {signal.symbol} @ ${signal.entry_price:.2f}")
+        print(f"Entered {signal.setup_type.value} trade: {signal.symbol} @ ${entry_price:.2f} (stop: ${optimized_stop_loss:.2f}, target: ${optimized_target:.2f})")
     
     def _update_positions(self, current_date: datetime):
         """Update all open positions and check for exits."""
@@ -546,9 +600,9 @@ class BacktestEngine:
                     exit_triggered = True
                     exit_reason = TradeStatus.CLOSED_TARGET
                 
-                # Check maximum holding period (60 days)
+                # Check maximum holding period (use optimized parameter)
                 days_held = (current_date - position.entry_date).days
-                if days_held >= 60:
+                if days_held >= self.current_params.max_holding_days:
                     exit_triggered = True
                     exit_reason = TradeStatus.CLOSED_PROFIT if current_price > position.entry_price else TradeStatus.CLOSED_LOSS
                 
@@ -777,20 +831,76 @@ class BacktestEngine:
             return ['SPY', 'QQQ', 'IWM', 'XLF', 'XLK', 'XLE', 'XLV', 'XLI', 'XLU', 'XLP']
     
     def _validate_regime_signal(self, signal: TradeSignal, current_regime: RegimeData) -> bool:
-        """Validate if signal is appropriate for current market regime."""
-        # Basic regime validation - could be enhanced
+        """Enhanced regime validation for setup appropriateness."""
         
-        # High volatility regime - avoid breakout continuation
-        if (current_regime.volatility_regime.value > 30 and 
-            signal.setup_type == SetupType.BREAKOUT_CONTINUATION):
-            return False
+        # Volatility-based filtering
+        vix_level = current_regime.vix_level
         
-        # Low volatility - favor volatility contraction setups
-        if (current_regime.volatility_regime.value < 20 and
-            signal.setup_type == SetupType.VOLATILITY_CONTRACTION):
-            return True
+        # High volatility regime (VIX > 30) - avoid momentum strategies
+        if vix_level > 30:
+            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION, 
+                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
+                return False
         
-        return True  # Default to accepting signal
+        # Low volatility regime (VIX < 20) - favor specific setups
+        elif vix_level < 20:
+            if signal.setup_type == SetupType.VOLATILITY_CONTRACTION:
+                return True  # Strong preference for vol contraction in low vol
+        
+        # Trend-based filtering
+        spy_trend = current_regime.spy_vs_sma200
+        
+        # Strong uptrend - avoid mean reversion, favor momentum
+        if spy_trend > 0.10:  # SPY > 10% above SMA200
+            if signal.setup_type == SetupType.OVERSOLD_MEAN_REVERSION:
+                return False
+            if signal.setup_type in [SetupType.TREND_PULLBACK, 
+                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
+                return True
+        
+        # Strong downtrend - favor mean reversion, avoid momentum
+        elif spy_trend < -0.10:  # SPY > 10% below SMA200
+            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
+                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
+                return False
+            if signal.setup_type in [SetupType.OVERSOLD_MEAN_REVERSION,
+                                   SetupType.GAP_FILL_REVERSAL]:
+                return True
+        
+        # Risk sentiment filtering
+        risk_ratio = current_regime.risk_on_off_ratio
+        
+        # Risk-off environment - favor defensive setups
+        if risk_ratio < 0.95:
+            if signal.setup_type == SetupType.DIVIDEND_DISTRIBUTION_PLAY:
+                return True  # Favor dividend plays in risk-off
+            if signal.setup_type == SetupType.RELATIVE_STRENGTH_MOMENTUM:
+                return False  # Avoid momentum in risk-off
+        
+        # Risk-on environment - favor growth setups
+        elif risk_ratio > 1.05:
+            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
+                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
+                return True
+        
+        # Sector rotation consideration
+        growth_value_ratio = current_regime.growth_value_ratio
+        
+        # Growth outperforming - favor tech/growth oriented setups
+        if growth_value_ratio > 1.10:
+            # Would need ETF sector mapping for full implementation
+            # For now, accept most momentum setups
+            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
+                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
+                return True
+        
+        # Value outperforming - favor defensive setups
+        elif growth_value_ratio < 0.90:
+            if signal.setup_type in [SetupType.DIVIDEND_DISTRIBUTION_PLAY,
+                                   SetupType.OVERSOLD_MEAN_REVERSION]:
+                return True
+        
+        return True  # Default to accepting signal if no specific rules apply
     
     def _combine_walk_forward_results(self, results: List[Dict]) -> PerformanceMetrics:
         """Combine multiple walk-forward period results."""
@@ -815,6 +925,231 @@ class BacktestEngine:
         self.daily_equity = all_equity
         
         return self._calculate_performance_metrics()
+    
+    def _optimize_parameters(self, 
+                           training_days: List[datetime],
+                           setup_types: List[SetupType],
+                           regime_aware: bool) -> OptimizationParameters:
+        """Optimize parameters using grid search on training data."""
+        
+        # Parameter ranges to test
+        stop_loss_range = [0.03, 0.04, 0.05, 0.06, 0.08]  # 3-8%
+        profit_target_range = [1.5, 2.0, 2.5, 3.0]  # R multiples
+        confidence_range = [0.5, 0.6, 0.7, 0.8]  # Confidence thresholds
+        
+        best_params = OptimizationParameters()
+        best_score = float('-inf')
+        
+        print(f"    Testing {len(stop_loss_range) * len(profit_target_range) * len(confidence_range)} parameter combinations...")
+        
+        # Grid search over parameter combinations
+        for stop_loss, target_r, confidence in product(stop_loss_range, profit_target_range, confidence_range):
+            # Create test parameters
+            test_params = OptimizationParameters(
+                stop_loss_pct=stop_loss,
+                profit_target_r=target_r,
+                confidence_threshold=confidence
+            )
+            
+            # Backtest with these parameters
+            try:
+                score = self._evaluate_parameters(test_params, training_days, setup_types, regime_aware)
+                
+                if score > best_score:
+                    best_score = score
+                    best_params = test_params
+            except Exception as e:
+                # Skip parameter combinations that cause errors
+                continue
+        
+        print(f"    Best parameters: stop_loss={best_params.stop_loss_pct:.1%}, target={best_params.profit_target_r:.1f}R, score={best_score:.3f}")
+        return best_params
+    
+    def _evaluate_parameters(self,
+                           params: OptimizationParameters,
+                           training_days: List[datetime],
+                           setup_types: List[SetupType],
+                           regime_aware: bool) -> float:
+        """Evaluate parameter set and return fitness score."""
+        
+        # Save current state
+        original_params = self.current_params
+        original_trades = self.trades.copy()
+        original_positions = self.current_positions.copy()
+        original_counter = self.trade_id_counter
+        original_equity = self.daily_equity.copy()
+        original_dates = self.daily_dates.copy()
+        
+        try:
+            # Apply test parameters
+            self.current_params = params
+            self.trades = []
+            self.current_positions = []
+            self.trade_id_counter = 1
+            self.daily_equity = [self.initial_capital]
+            self.daily_dates = []
+            
+            # Run mini-backtest on training period
+            for current_date in training_days:
+                self.daily_dates.append(current_date)
+                self._update_positions(current_date)
+                
+                if len(self.current_positions) < self.max_concurrent_positions:
+                    signals = self._get_signals_for_date(current_date, setup_types, regime_aware)
+                    
+                    # Filter by confidence threshold
+                    signals = [s for s in signals if s.confidence >= params.confidence_threshold]
+                    
+                    for signal in signals:
+                        if self._can_enter_trade(signal, current_date):
+                            self._enter_trade(signal, current_date)
+                            if len(self.current_positions) >= self.max_concurrent_positions:
+                                break
+                
+                current_equity = self._calculate_current_equity(current_date)
+                self.daily_equity.append(current_equity)
+            
+            # Calculate fitness score (Sharpe ratio with penalty for excessive trades)
+            if len(self.trades) < 3:  # Minimum trades required
+                return float('-inf')
+            
+            perf = self._calculate_performance_metrics()
+            
+            # Fitness function: Sharpe ratio adjusted for trade frequency
+            trade_frequency_penalty = max(0, (len(self.trades) - 50) * 0.01)  # Penalize >50 trades
+            fitness_score = perf.sharpe_ratio - trade_frequency_penalty
+            
+            return fitness_score
+            
+        finally:
+            # Restore original state
+            self.current_params = original_params
+            self.trades = original_trades
+            self.current_positions = original_positions
+            self.trade_id_counter = original_counter
+            self.daily_equity = original_equity
+            self.daily_dates = original_dates
+    
+    def _calculate_regime_performance(self) -> RegimePerformance:
+        """Calculate performance metrics broken down by market regime."""
+        
+        if not self.trades:
+            return RegimePerformance()
+        
+        # Group trades by regime characteristics
+        volatility_low_trades = []
+        volatility_medium_trades = []
+        volatility_high_trades = []
+        trend_up_trades = []
+        trend_neutral_trades = []
+        trend_down_trades = []
+        risk_on_trades = []
+        risk_off_trades = []
+        
+        for trade in self.trades:
+            if trade.regime_at_entry:
+                regime = trade.regime_at_entry
+                
+                # Categorize by volatility regime
+                if regime.vix_level < 20:
+                    volatility_low_trades.append(trade)
+                elif regime.vix_level > 30:
+                    volatility_high_trades.append(trade)
+                else:
+                    volatility_medium_trades.append(trade)
+                
+                # Categorize by trend regime
+                if regime.spy_vs_sma200 > 0.05:  # SPY > 5% above SMA200
+                    trend_up_trades.append(trade)
+                elif regime.spy_vs_sma200 < -0.05:  # SPY > 5% below SMA200
+                    trend_down_trades.append(trade)
+                else:
+                    trend_neutral_trades.append(trade)
+                
+                # Categorize by risk sentiment
+                if regime.risk_on_off_ratio > 1.02:  # Risk-on environment
+                    risk_on_trades.append(trade)
+                elif regime.risk_on_off_ratio < 0.98:  # Risk-off environment
+                    risk_off_trades.append(trade)
+        
+        # Calculate metrics for each regime category
+        regime_performance = RegimePerformance()
+        
+        if volatility_low_trades:
+            regime_performance.volatility_low = self._calculate_metrics_for_trades(volatility_low_trades)
+        if volatility_medium_trades:
+            regime_performance.volatility_medium = self._calculate_metrics_for_trades(volatility_medium_trades)
+        if volatility_high_trades:
+            regime_performance.volatility_high = self._calculate_metrics_for_trades(volatility_high_trades)
+        if trend_up_trades:
+            regime_performance.trend_up = self._calculate_metrics_for_trades(trend_up_trades)
+        if trend_neutral_trades:
+            regime_performance.trend_neutral = self._calculate_metrics_for_trades(trend_neutral_trades)
+        if trend_down_trades:
+            regime_performance.trend_down = self._calculate_metrics_for_trades(trend_down_trades)
+        if risk_on_trades:
+            regime_performance.risk_on = self._calculate_metrics_for_trades(risk_on_trades)
+        if risk_off_trades:
+            regime_performance.risk_off = self._calculate_metrics_for_trades(risk_off_trades)
+        
+        return regime_performance
+    
+    def _calculate_metrics_for_trades(self, trades: List[BacktestTrade]) -> PerformanceMetrics:
+        """Calculate performance metrics for a subset of trades."""
+        
+        if not trades:
+            return PerformanceMetrics(
+                total_trades=0, winning_trades=0, losing_trades=0,
+                win_rate=0, avg_r_multiple=0, total_return=0,
+                max_drawdown=0, sharpe_ratio=0, calmar_ratio=0,
+                avg_days_held=0, largest_winner=0, largest_loser=0,
+                consecutive_wins=0, consecutive_losses=0, profit_factor=0
+            )
+        
+        # Basic statistics
+        total_trades = len(trades)
+        winning_trades = len([t for t in trades if (t.pnl or 0) > 0])
+        losing_trades = total_trades - winning_trades
+        win_rate = winning_trades / total_trades if total_trades > 0 else 0
+        
+        # R-multiple analysis
+        r_multiples = [t.r_multiple for t in trades if t.r_multiple is not None]
+        avg_r_multiple = np.mean(r_multiples) if r_multiples else 0
+        
+        # Return calculations
+        total_pnl = sum(t.pnl for t in trades if t.pnl is not None)
+        total_return = total_pnl / self.initial_capital if self.initial_capital > 0 else 0
+        
+        # Other metrics
+        days_held = [t.days_held for t in trades if t.days_held is not None]
+        avg_days_held = np.mean(days_held) if days_held else 0
+        
+        pnls = [t.pnl for t in trades if t.pnl is not None]
+        largest_winner = max(pnls) if pnls else 0
+        largest_loser = min(pnls) if pnls else 0
+        
+        # Profit factor
+        gross_profit = sum(pnl for pnl in pnls if pnl > 0)
+        gross_loss = abs(sum(pnl for pnl in pnls if pnl < 0))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+        
+        return PerformanceMetrics(
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            win_rate=win_rate,
+            avg_r_multiple=avg_r_multiple,
+            total_return=total_return,
+            max_drawdown=0,  # Simplified for regime breakdown
+            sharpe_ratio=0,   # Simplified for regime breakdown
+            calmar_ratio=0,   # Simplified for regime breakdown
+            avg_days_held=avg_days_held,
+            largest_winner=largest_winner,
+            largest_loser=largest_loser,
+            consecutive_wins=0,  # Simplified for regime breakdown
+            consecutive_losses=0,  # Simplified for regime breakdown
+            profit_factor=profit_factor
+        )
 
 
 def main():
@@ -938,6 +1273,81 @@ Examples:
     print(f"Largest Winner: ${perf.largest_winner:.2f}")
     print(f"Largest Loser: ${perf.largest_loser:.2f}")
     print("="*60)
+    
+    # Display regime performance analysis if available
+    if 'regime_performance' in results:
+        regime_perf = results['regime_performance']
+        print("\nREGIME PERFORMANCE ANALYSIS")
+        print("="*60)
+        
+        # Volatility regimes
+        if regime_perf.volatility_low:
+            vol_low = regime_perf.volatility_low
+            print(f"Low Volatility (VIX<20): {vol_low.total_trades} trades, "
+                  f"{vol_low.win_rate:.1%} win rate, "
+                  f"{vol_low.avg_r_multiple:.2f}R avg")
+        
+        if regime_perf.volatility_medium:
+            vol_med = regime_perf.volatility_medium
+            print(f"Medium Volatility (VIX 20-30): {vol_med.total_trades} trades, "
+                  f"{vol_med.win_rate:.1%} win rate, "
+                  f"{vol_med.avg_r_multiple:.2f}R avg")
+        
+        if regime_perf.volatility_high:
+            vol_high = regime_perf.volatility_high
+            print(f"High Volatility (VIX>30): {vol_high.total_trades} trades, "
+                  f"{vol_high.win_rate:.1%} win rate, "
+                  f"{vol_high.avg_r_multiple:.2f}R avg")
+        
+        print("-" * 40)
+        
+        # Trend regimes
+        if regime_perf.trend_up:
+            trend_up = regime_perf.trend_up
+            print(f"Uptrend (SPY>SMA200+5%): {trend_up.total_trades} trades, "
+                  f"{trend_up.win_rate:.1%} win rate, "
+                  f"{trend_up.avg_r_multiple:.2f}R avg")
+        
+        if regime_perf.trend_neutral:
+            trend_neu = regime_perf.trend_neutral
+            print(f"Neutral Trend: {trend_neu.total_trades} trades, "
+                  f"{trend_neu.win_rate:.1%} win rate, "
+                  f"{trend_neu.avg_r_multiple:.2f}R avg")
+        
+        if regime_perf.trend_down:
+            trend_down = regime_perf.trend_down
+            print(f"Downtrend (SPY<SMA200-5%): {trend_down.total_trades} trades, "
+                  f"{trend_down.win_rate:.1%} win rate, "
+                  f"{trend_down.avg_r_multiple:.2f}R avg")
+        
+        print("-" * 40)
+        
+        # Risk sentiment regimes
+        if regime_perf.risk_on:
+            risk_on = regime_perf.risk_on
+            print(f"Risk-On Environment: {risk_on.total_trades} trades, "
+                  f"{risk_on.win_rate:.1%} win rate, "
+                  f"{risk_on.avg_r_multiple:.2f}R avg")
+        
+        if regime_perf.risk_off:
+            risk_off = regime_perf.risk_off
+            print(f"Risk-Off Environment: {risk_off.total_trades} trades, "
+                  f"{risk_off.win_rate:.1%} win rate, "
+                  f"{risk_off.avg_r_multiple:.2f}R avg")
+        
+        print("="*60)
+    
+    # Display walk-forward optimization history if available
+    if 'optimization_history' in results:
+        opt_history = results['optimization_history']
+        print("\nWALK-FORWARD OPTIMIZATION HISTORY")
+        print("="*60)
+        for i, period in enumerate(opt_history):
+            params = period['optimal_params']
+            print(f"Period {i+1}: stop_loss={params['stop_loss_pct']:.1%}, "
+                  f"target={params['profit_target_r']:.1f}R, "
+                  f"confidence={params['confidence_threshold']:.2f}")
+        print("="*60)
     
     # Export results if requested
     if args.export_results:
