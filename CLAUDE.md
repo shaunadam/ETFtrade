@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based ETF swing trading system designed to generate long-term capital growth with controlled drawdowns. The system focuses exclusively on ETFs (sector-specific, thematic, leveraged) and is designed for limited time availability with daily monitoring of just 5-10 minutes.
+This is a Python-based ETF and stock swing trading system designed to generate long-term capital growth with controlled drawdowns. The system trades both ETFs (sector-specific, thematic, leveraged) and individual stocks with equal priority, featuring both CLI tools and a Flask web application for comprehensive trading workflow management. Designed for limited time availability with daily monitoring of just 5-10 minutes.
 
 **Key Objectives:**
 - Target 20% max drawdown with decades-long time horizon
@@ -17,7 +17,9 @@ This is a Python-based ETF swing trading system designed to generate long-term c
 The system is organized into 5 main phases:
 
 ### Core Components
-- **screener.py**: Production CLI for ETF screening with regime-aware filtering and export capabilities
+
+#### CLI Tools (Original)
+- **screener.py**: Production CLI for ETF/stock screening with regime-aware filtering and export capabilities
 - **data_cache.py**: Intelligent data caching engine with 95%+ API call reduction
 - **regime_detection.py**: Market regime detection across volatility, trend, sector rotation, and risk sentiment
 - **trade_setups.py**: Core trade setup implementations with regime validation
@@ -26,6 +28,14 @@ The system is organized into 5 main phases:
 - **report.py**: Performance reporting vs benchmarks
 - **etf_list.csv**: Curated list of ~50 high-quality ETFs with tagging
 - **journal.db**: SQLite database for trades, regimes, price data, and technical indicators
+
+#### Flask Web Application (Current Development)
+- **flask_app/**: Modular Flask web application with dark Bootstrap 5 theme
+- **app.py**: Main Flask application with blueprint architecture
+- **config.py**: Environment-based configuration with .env support
+- **blueprints/**: Modular components (dashboard, screener, journal, backtest, regime, data)
+- **templates/**: Jinja2 templates with dark theme and Plotly.js integration
+- **static/**: CSS, JavaScript, and assets for web interface
 
 ### Database Schema (Future-Proofed)
 ```sql
@@ -46,6 +56,12 @@ market_regimes: date, volatility_regime, trend_regime, sector_rotation, risk_on_
 - `matplotlib`/`plotly`: Visualization
 - `sqlite3`: Database (built-in)
 - `jupyter`: Analysis notebooks
+
+**Web Framework:**
+- `flask`: Web application framework
+- `flask-sqlalchemy`: Database ORM integration
+- `python-dotenv`: Environment configuration
+- `wtforms`: Form handling and validation
 
 **Development Tools:**
 - `pytest`: Testing framework
@@ -70,7 +86,12 @@ python init_database.py --skip-data           # Schema only (manual data loading
 # Run this once per session before any Python commands:
 source .venv/bin/activate
 
-# Daily trading workflow
+# Flask Web Application
+cd flask_app && python app.py                            # Start Flask development server (http://localhost:5000)
+cd flask_app && FLASK_ENV=production python app.py       # Production mode
+cd flask_app && python -c "from app import create_app; create_app().run(debug=True, port=5001)"  # Custom port
+
+# Daily trading workflow (CLI)
 python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
 python screener.py --update-data --regime-filter         # Update data + find candidates  
 python screener.py --cache-stats                         # Check data cache status
@@ -201,10 +222,11 @@ python data_cache.py
 ## Development Phases
 
 1. **Phase 1**: Strategy Foundation ✅ (ETF universe, regime detection, trade setups, data caching)
-2. **Phase 2**: Screener + Backtest Engine (screener complete, backtest pending)
-3. **Phase 3**: Trade Journal (SQLite database, correlation tracking)
-4. **Phase 4**: Reporting Tools (performance vs benchmarks)
-5. **Phase 5**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
+2. **Phase 2**: Screener + Backtest Engine ✅ (CLI screener complete, backtest pending)
+3. **Phase 3**: Flask Web Application 🚧 (foundation complete, module development in progress)
+4. **Phase 4**: Trade Journal Integration (CLI + web interface)
+5. **Phase 5**: Reporting Tools (performance vs benchmarks)
+6. **Phase 6**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
 
 **Progress Tracking**: See [PROGRESS.md](PROGRESS.md) for detailed development status and completed tasks.
 
