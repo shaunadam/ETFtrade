@@ -33,27 +33,39 @@ class ETFScreener:
         self.regime_detector = RegimeDetector(db_path)
         self.setup_manager = SetupManager(db_path)
     
-    def screen_etfs(self, 
-                   setup_filter: Optional[str] = None,
-                   min_confidence: float = 0.5,
-                   max_signals: int = 10,
-                   regime_filter: bool = True) -> List[TradeSignal]:
+    def screen_instruments(self, 
+                          setup_filter: Optional[str] = None,
+                          min_confidence: float = 0.5,
+                          max_signals: int = 100,
+                          regime_filter: bool = True,
+                          update_data: bool = False,
+                          instrument_types: Optional[List[str]] = None) -> List[TradeSignal]:
         """
-        Screen ETFs for trade opportunities.
+        Screen instruments (ETFs/stocks) for trade opportunities.
         
         Args:
             setup_filter: Filter by specific setup type
             min_confidence: Minimum confidence threshold
             max_signals: Maximum number of signals to return
             regime_filter: Apply regime-aware filtering
+            update_data: Whether to update market data before screening
+            instrument_types: List of types to include ('ETF', 'Stock', 'ETN'). 
+                            If None, defaults to ETFs only.
             
         Returns:
             List of trade signals
         """
-        print("🔍 Screening ETF universe for trade opportunities...")
+        # Default to ETFs if no types specified
+        if instrument_types is None:
+            instrument_types = ['ETF', 'ETN']
+            
+        type_str = "+".join(instrument_types)
+        print(f"🔍 Screening {type_str} universe for trade opportunities...")
         
-        # Update market data first (smart refresh)
-        self.data_cache.update_market_data()
+        # Update market data only if requested
+        if update_data:
+            print("🔄 Updating market data...")
+            self.data_cache.update_market_data()
         
         # Get current market regime
         current_regime = self.regime_detector.detect_current_regime()
@@ -68,7 +80,7 @@ class ETFScreener:
             try:
                 setup_type = SetupType(setup_filter)
                 setup = self.setup_manager.setups[setup_type]
-                symbols = self.setup_manager.get_all_symbols()
+                symbols = self.setup_manager.get_all_symbols(instrument_types)
                 signals = setup.scan_for_signals(symbols)
                 print(f"\n🎯 Scanning with {setup_filter} setup...")
             except (ValueError, KeyError):
@@ -77,7 +89,7 @@ class ETFScreener:
                 return []
         else:
             print(f"\n🎯 Scanning with all setups...")
-            all_signals = self.setup_manager.scan_all_setups(max_signals_per_setup=5)
+            all_signals = self.setup_manager.scan_all_setups(max_signals_per_setup=5, instrument_types=instrument_types)
             signals = []
             for setup_signals in all_signals.values():
                 signals.extend(setup_signals)
@@ -102,6 +114,21 @@ class ETFScreener:
         
         print(f"\n📈 Found {len(signals)} qualifying signals")
         return signals
+    
+    def screen_etfs(self, **kwargs) -> List[TradeSignal]:
+        """Backward compatibility method for ETF screening."""
+        kwargs['instrument_types'] = ['ETF', 'ETN']
+        return self.screen_instruments(**kwargs)
+    
+    def screen_stocks(self, **kwargs) -> List[TradeSignal]:
+        """Screen stocks for trade opportunities."""
+        kwargs['instrument_types'] = ['Stock']
+        return self.screen_instruments(**kwargs)
+    
+    def screen_all(self, **kwargs) -> List[TradeSignal]:
+        """Screen all instruments (ETFs and stocks) for trade opportunities."""
+        kwargs['instrument_types'] = ['ETF', 'ETN', 'Stock']
+        return self.screen_instruments(**kwargs)
     
     def display_signals(self, signals: List[TradeSignal]) -> None:
         """Display trade signals in console format."""
@@ -132,7 +159,7 @@ class ETFScreener:
         """Export signals to CSV file."""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"etf_signals_{timestamp}.csv"
+            filename = f"trading_signals_{timestamp}.csv"
         
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = [
@@ -168,7 +195,7 @@ class ETFScreener:
         """Export signals to JSON file."""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"etf_signals_{timestamp}.json"
+            filename = f"trading_signals_{timestamp}.json"
         
         export_data = {
             "timestamp": datetime.now().isoformat(),
@@ -219,13 +246,14 @@ class ETFScreener:
 def main():
     """Main CLI interface."""
     parser = argparse.ArgumentParser(
-        description="ETF Screener - Find trade opportunities with regime-aware filtering",
+        description="Instrument Screener - Find trade opportunities with regime-aware filtering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python screener.py --regime-filter --export-csv
-  python screener.py --setup trend_pullback --min-confidence 0.7
-  python screener.py --update-data --max-signals 5
+  python screener.py --type stock --setup trend_pullback --min-confidence 0.6
+  python screener.py --type all --update-data --max-signals 10
+  python screener.py --setup breakout_continuation --type stock
   python screener.py --cache-stats
         """
     )
@@ -243,6 +271,12 @@ Examples:
     
     parser.add_argument('--regime-filter', action='store_true',
                        help='Apply regime-aware filtering')
+    
+    # Instrument type filtering
+    parser.add_argument('--type', type=str, 
+                       choices=['etf', 'stock', 'all'],
+                       default='etf',
+                       help='Instrument type to screen (default: etf)')
     
     # Data management
     parser.add_argument('--update-data', action='store_true',
@@ -275,20 +309,31 @@ Examples:
         screener.show_cache_stats()
         return
     
-    # Update data if requested
-    if args.update_data or args.force_refresh:
-        print("🔄 Updating market data...")
-        screener.data_cache.update_market_data(force_full_refresh=args.force_refresh)
-        if not any([args.export_csv, args.export_json]):
-            return
+    # Determine instrument types based on user selection
+    if args.type == 'etf':
+        instrument_types = ['ETF', 'ETN']
+    elif args.type == 'stock':
+        instrument_types = ['Stock']
+    elif args.type == 'all':
+        instrument_types = ['ETF', 'ETN', 'Stock']
+    else:
+        instrument_types = ['ETF', 'ETN']  # Default fallback
     
     # Screen for signals
-    signals = screener.screen_etfs(
+    signals = screener.screen_instruments(
         setup_filter=args.setup,
         min_confidence=args.min_confidence,
         max_signals=args.max_signals,
-        regime_filter=args.regime_filter
+        regime_filter=args.regime_filter,
+        update_data=args.update_data or args.force_refresh,
+        instrument_types=instrument_types
     )
+    
+    # Force refresh requires separate handling
+    if args.force_refresh and not args.update_data:
+        print("🔄 Force refreshing market data...")
+        screener.data_cache.update_market_data(force_full_refresh=True)
+        print("✅ Market data force refreshed")
     
     # Display results
     screener.display_signals(signals)

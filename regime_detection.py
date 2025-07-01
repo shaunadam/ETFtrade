@@ -175,11 +175,23 @@ class RegimeDetector:
     
     def _detect_trend_regime(self, spy_data: pd.DataFrame) -> Tuple[TrendRegime, float]:
         """Detect trend regime based on SPY vs 200-day SMA."""
-        spy_data['SMA200'] = spy_data['Close'].rolling(window=200).mean()
-        
         current_price = spy_data['Close'].iloc[-1]
-        current_sma200 = spy_data['SMA200'].iloc[-1]
         
+        # Use cached SMA200 indicator if available, otherwise calculate on-the-fly
+        if 'SMA200' in spy_data.columns and not pd.isna(spy_data['SMA200'].iloc[-1]):
+            current_sma200 = spy_data['SMA200'].iloc[-1]
+        else:
+            # Fallback: calculate on-the-fly if cached indicator unavailable
+            if len(spy_data) >= 200:
+                current_sma200 = spy_data['Close'].rolling(window=200).mean().iloc[-1]
+            else:
+                # Insufficient data - return neutral regime with ratio 1.0
+                return TrendRegime.RANGING, 1.0
+        
+        # Handle case where SMA200 calculation failed
+        if pd.isna(current_sma200) or current_sma200 == 0:
+            return TrendRegime.RANGING, 1.0
+            
         ratio = current_price / current_sma200
         
         if ratio > 1.05:

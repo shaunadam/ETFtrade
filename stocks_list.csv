@@ -1,0 +1,55 @@
+symbol,name,sector,market_cap_category,beta_category,liquidity_category,tags
+NVDA,NVIDIA Corporation,Technology,Large Cap,High Beta,High Volume,AI semiconductor growth momentum
+AMD,Advanced Micro Devices,Technology,Large Cap,High Beta,High Volume,semiconductor cpu gpu competition
+TSLA,Tesla Inc,Consumer Discretionary,Large Cap,High Beta,High Volume,ev innovation autonomous growth
+CRM,Salesforce Inc,Technology,Large Cap,High Beta,High Volume,cloud saas enterprise growth
+NFLX,Netflix Inc,Communication Services,Large Cap,High Beta,High Volume,streaming content media growth
+META,Meta Platforms Inc,Communication Services,Large Cap,High Beta,High Volume,social metaverse advertising growth
+SHOP,Shopify Inc,Technology,Large Cap,High Beta,High Volume,ecommerce platform growth
+ROKU,Roku Inc,Communication Services,Mid Cap,High Beta,High Volume,streaming platform advertising
+ZM,Zoom Video Communications,Technology,Mid Cap,High Beta,High Volume,video conferencing saas
+SNOW,Snowflake Inc,Technology,Large Cap,High Beta,High Volume,cloud data analytics growth
+PLTR,Palantir Technologies,Technology,Large Cap,High Beta,High Volume,data analytics ai government
+NET,Cloudflare Inc,Technology,Large Cap,High Beta,High Volume,cloud security cdn growth
+DDOG,Datadog Inc,Technology,Large Cap,High Beta,High Volume,cloud monitoring observability
+ZS,Zscaler Inc,Technology,Large Cap,High Beta,High Volume,cloud security zero trust
+MRNA,Moderna Inc,Healthcare,Large Cap,High Beta,High Volume,biotech mrna vaccines
+BNTX,BioNTech SE,Healthcare,Mid Cap,High Beta,High Volume,biotech mrna vaccines partnership
+GILD,Gilead Sciences,Healthcare,Large Cap,Medium Beta,High Volume,biotech hiv oncology established
+BIIB,Biogen Inc,Healthcare,Large Cap,High Beta,High Volume,biotech neurology alzheimers
+VRTX,Vertex Pharmaceuticals,Healthcare,Large Cap,Medium Beta,High Volume,biotech rare disease cystic fibrosis
+ILMN,Illumina Inc,Healthcare,Large Cap,High Beta,High Volume,biotech genomics sequencing
+JPM,JPMorgan Chase,Financial,Large Cap,Medium Beta,High Volume,banking interest rates regime sensitive
+BAC,Bank of America,Financial,Large Cap,Medium Beta,High Volume,banking interest rates consumer
+GS,Goldman Sachs Group,Financial,Large Cap,Medium Beta,High Volume,investment banking trading volatility
+MS,Morgan Stanley,Financial,Large Cap,Medium Beta,High Volume,investment banking wealth management
+C,Citigroup Inc,Financial,Large Cap,High Beta,High Volume,banking global exposure
+XOM,Exxon Mobil Corp,Energy,Large Cap,High Beta,High Volume,oil gas commodity exposure
+CVX,Chevron Corp,Energy,Large Cap,High Beta,High Volume,oil gas dividend commodity
+FCX,Freeport-McMoRan,Materials,Large Cap,High Beta,High Volume,copper mining commodity cyclical
+NEM,Newmont Corp,Materials,Large Cap,High Beta,High Volume,gold mining commodity inflation hedge
+CF,CF Industries,Materials,Mid Cap,High Beta,High Volume,fertilizer agriculture commodity
+MOS,Mosaic Company,Materials,Mid Cap,High Beta,High Volume,fertilizer potash agriculture
+UBER,Uber Technologies,Technology,Large Cap,High Beta,High Volume,rideshare gig economy mobility
+LYFT,Lyft Inc,Technology,Mid Cap,High Beta,High Volume,rideshare transportation
+ABNB,Airbnb Inc,Consumer Discretionary,Large Cap,High Beta,High Volume,travel hospitality sharing economy
+DIS,Walt Disney Co,Communication Services,Large Cap,Medium Beta,High Volume,entertainment streaming parks
+PTON,Peloton Interactive,Consumer Discretionary,Small Cap,High Beta,Medium Volume,fitness equipment subscription turnaround
+TDOC,Teladoc Health,Healthcare,Mid Cap,High Beta,High Volume,telehealth digital health
+HOOD,Robinhood Markets,Financial,Mid Cap,High Beta,High Volume,fintech trading commission free
+SOFI,SoFi Technologies,Financial,Mid Cap,High Beta,High Volume,fintech lending digital banking
+COIN,Coinbase Global,Financial,Large Cap,High Beta,High Volume,crypto exchange digital assets
+RIOT,Riot Platforms,Technology,Mid Cap,High Beta,High Volume,bitcoin mining crypto exposure
+MARA,Marathon Digital Holdings,Technology,Mid Cap,High Beta,High Volume,bitcoin mining crypto exposure
+PYPL,PayPal Holdings,Financial,Large Cap,Medium Beta,High Volume,payments digital wallets
+UPST,Upstart Holdings,Financial,Mid Cap,High Beta,High Volume,ai lending fintech
+SMCI,Super Micro Computer,Technology,Large Cap,High Beta,High Volume,ai infrastructure servers
+COHR,Coherent Corp,Technology,Mid Cap,High Beta,High Volume,optics lasers semiconductor equipment
+ENPH,Enphase Energy,Technology,Mid Cap,High Beta,High Volume,solar inverters renewable energy
+SPWR,SunPower Corp,Technology,Small Cap,High Beta,Medium Volume,solar panels renewable energy
+RUN,Sunrun Inc,Technology,Mid Cap,High Beta,High Volume,residential solar installation
+LCID,Lucid Group,Consumer Discretionary,Mid Cap,High Beta,High Volume,ev luxury electric vehicles
+RIVN,Rivian Automotive,Consumer Discretionary,Mid Cap,High Beta,High Volume,ev trucks electric vehicles
+NIO,NIO Inc,Consumer Discretionary,Mid Cap,High Beta,High Volume,ev chinese electric vehicles
+XPEV,XPeng Inc,Consumer Discretionary,Mid Cap,High Beta,High Volume,ev chinese electric vehicles
+LI,Li Auto Inc,Consumer Discretionary,Mid Cap,High Beta,High Volume,ev chinese electric vehicles hybrid

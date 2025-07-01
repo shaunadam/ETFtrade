@@ -55,23 +55,35 @@ market_regimes: date, volatility_regime, trend_regime, sector_rotation, risk_on_
 ## Common Development Commands
 
 ```bash
-# Environment setup
+# Environment setup (first time)
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
+# Initialize database with market data (REQUIRED for first-time setup)
+python init_database.py --bootstrap core      # Essential ETFs for regime detection (recommended)
+python init_database.py --bootstrap priority  # Core + high-priority trading ETFs
+python init_database.py --bootstrap all       # All ETFs (slower, comprehensive)
+python init_database.py --skip-data           # Schema only (manual data loading required)
 
 # IMPORTANT: Always activate virtual environment when starting work
 # Run this once per session before any Python commands:
 source .venv/bin/activate
 
 # Daily trading workflow
-python screener.py --regime-filter --export-csv          # Find trade candidates
+python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
+python screener.py --update-data --regime-filter         # Update data + find candidates  
 python screener.py --cache-stats                         # Check data cache status
 python screener.py --setup breakout_continuation --min-confidence 0.6  # Specific setup scan
 python screener.py --setup gap_fill_reversal             # Gap reversal opportunities
 python screener.py --setup relative_strength_momentum    # Relative strength plays
 python screener.py --setup volatility_contraction        # Low volatility setups
 python screener.py --setup dividend_distribution_play    # Dividend timing plays
+python screener.py --setup elder_triple_screen           # Multi-timeframe trend setups
+python screener.py --setup institutional_volume_climax   # Institutional accumulation setups
+python screener.py --setup failed_breakdown_reversal     # Bear trap reversal setups
+python screener.py --setup earnings_expectation_reset    # Post-earnings technical setups
+python screener.py --setup elder_force_impulse           # Elder's Force Index + Impulse System
 python journal.py --open-trades --correlations           # Check current positions
 python report.py --daily --vs-spy                        # Quick performance check
 
@@ -101,6 +113,8 @@ python journal.py --backup-db --compress                 # Backup trade data
 # Analysis & reports
 python report.py --regime-performance --since 2023-01-01 # Performance by regime
 python report.py --setup-analysis --export-charts        # Setup effectiveness
+python analysis/treasury_analysis.py                     # Treasury analysis tools
+python analysis/treasury_research.py                     # Treasury research tools
 jupyter notebook reports/weekly_review.ipynb             # Interactive analysis
 
 # Development & testing
@@ -108,6 +122,10 @@ pytest tests/ -v                                         # Run all tests
 pytest tests/test_screener.py::test_regime_detection     # Test specific function
 ruff check . && ruff format .                           # Code quality
 mypy . --strict                                         # Type checking
+
+# Debugging & diagnostics
+ETF_DEBUG=1 python screener.py --cache-stats            # Debug cache behavior
+ETF_DEBUG=1 python screener.py --update-data            # Debug data refresh logic
 
 # Database operations
 sqlite3 journal.db ".backup backup_$(date +%Y%m%d).db"  # Manual DB backup
@@ -131,6 +149,11 @@ sqlite3 journal.db ".schema"                            # View database schema
 - **Relative Strength Momentum**: Buy ETFs outperforming SPY during weakness
 - **Volatility Contraction**: Trade after ATR compression before expansion
 - **Dividend/Distribution Play**: Technical setups in dividend sectors during stable regimes
+- **Elder's Triple Screen**: Multi-timeframe trend following with precise entry timing
+- **Institutional Volume Climax**: Detect accumulation during retail panic selling
+- **Failed Breakdown Reversal**: Capitalize on bear traps and quick reversals
+- **Earnings Expectation Reset**: Trade technical patterns after earnings uncertainty is removed
+- **Elder Force Impulse**: Dr. Elder's Force Index + Impulse System combining price, volume, trend, and momentum
 
 ### Risk Management Rules
 - Max 2% capital risk per trade
@@ -151,7 +174,7 @@ The system implements intelligent data caching to minimize API calls and improve
 - **Smart Refresh Strategy**: Always refreshes last 5 trading days
 - **Healing Logic**: Ensures 200+ day buffer for SMA200 calculations
 - **95% API Reduction**: Dramatically reduces yfinance API calls
-- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands)
+- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands, EMA13, Force Index, MACD Line/Histogram)
 - **Graceful Fallback**: Seamless fallback to yfinance when cache misses
 
 ### Cache Management
@@ -170,7 +193,7 @@ python data_cache.py
 ```
 
 ### Performance Metrics
-- **Cache Size**: 6,400+ price records, 37,000+ indicator values
+- **Cache Size**: 6,400+ price records, 45,000+ indicator values
 - **Symbols Cached**: 50+ ETFs with full history
 - **Speed Improvement**: Screening in seconds vs minutes
 - **Data Quality**: Healing strategy ensures indicator accuracy
@@ -181,7 +204,7 @@ python data_cache.py
 2. **Phase 2**: Screener + Backtest Engine (screener complete, backtest pending)
 3. **Phase 3**: Trade Journal (SQLite database, correlation tracking)
 4. **Phase 4**: Reporting Tools (performance vs benchmarks)
-5. **Phase 5**: Optimization & Expansion (strategy refinement)
+5. **Phase 5**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
 
 **Progress Tracking**: See [PROGRESS.md](PROGRESS.md) for detailed development status and completed tasks.
 
@@ -191,6 +214,15 @@ python data_cache.py
 - Positive performance across market regimes
 - <30 minutes daily maintenance
 - Stable walk-forward parameters
+
+## Future Enhancements (Post Phase 5)
+
+### Dynamic Production Parameter Optimization
+- **Adaptive Screening**: Monthly/quarterly parameter optimization for live screening
+- **Risk Controls**: Statistical significance requirements and overfitting prevention
+- **Regime-Aware Adaptation**: Parameter updates based on current market regime
+- **Live Walk-Forward**: Continuous optimization using rolling historical performance
+- **Portfolio-Level Optimization**: Holistic parameter tuning across all setups and positions
 
 ## Development Preferences
 - **Commit Messages**: Keep simple, 1 sentence, no "Generated with Claude Code" footers
