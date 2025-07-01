@@ -254,7 +254,7 @@ def load_etf_data(cursor, csv_file_path):
         return False
 
 def insert_default_setups(cursor):
-    """Insert default trade setups (all 12 from trade_setups.py)."""
+    """Insert default trade setups (all 13 from trade_setups.py)."""
     
     setups = [
         ("trend_pullback", "Pullback in trending market", "{'pullback_pct': 0.05, 'trend_sma': 200}"),
@@ -268,7 +268,8 @@ def insert_default_setups(cursor):
         ("elder_triple_screen", "Multi-timeframe trend following with precise entry timing", "{'weekly_ema_span': 65, 'rsi_threshold': 30, 'volume_multiplier': 1.5}"),
         ("institutional_volume_climax", "Detect accumulation during retail panic selling", "{'high_volume_threshold': 3.0, 'min_high_vol_days': 2, 'decline_threshold': 0.02}"),
         ("failed_breakdown_reversal", "Capitalize on bear traps and quick reversals", "{'breakdown_lookback': 5, 'reversal_days_max': 3, 'volume_confirmation': 1.2}"),
-        ("earnings_expectation_reset", "Trade technical patterns after earnings uncertainty removed", "{'atr_spike_threshold': 1.5, 'normalization_threshold': 1.3, 'pattern_types': ['pullback', 'breakout']}")
+        ("earnings_expectation_reset", "Trade technical patterns after earnings uncertainty removed", "{'atr_spike_threshold': 1.5, 'normalization_threshold': 1.3, 'pattern_types': ['pullback', 'breakout']}"),
+        ("elder_force_impulse", "Elder's Force Index + Impulse System combining price, volume, trend, and momentum", "{'force_index_period': 13, 'ema_period': 13, 'macd_fast': 12, 'macd_slow': 26, 'macd_signal': 9}")
     ]
     
     setup_count = 0

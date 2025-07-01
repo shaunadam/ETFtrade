@@ -42,6 +42,7 @@ class SetupType(Enum):
     INSTITUTIONAL_VOLUME_CLIMAX = "institutional_volume_climax"
     FAILED_BREAKDOWN_REVERSAL = "failed_breakdown_reversal"
     EARNINGS_EXPECTATION_RESET = "earnings_expectation_reset"
+    ELDER_FORCE_IMPULSE = "elder_force_impulse"
 
 
 @dataclass
@@ -83,14 +84,101 @@ class BaseSetup(ABC):
     
     
     def calculate_position_size(self, entry_price: float, stop_loss: float, risk_per_trade: float = 0.02, 
-                              account_size: float = 100000) -> float:
-        """Calculate position size based on risk management."""
+                              account_size: Optional[float] = None, volatility_adjustment: bool = True) -> float:
+        """Calculate position size based on advanced risk management.
+        
+        Args:
+            entry_price: Entry price for the trade
+            stop_loss: Stop loss price
+            risk_per_trade: Risk as percentage of account (default 2%)
+            account_size: Current account equity (None uses default 100k for standalone testing)
+            volatility_adjustment: Whether to adjust for current volatility regime
+        
+        Returns:
+            Position size in shares
+        """
         risk_per_share = abs(entry_price - stop_loss)
         if risk_per_share == 0:
             return 0
         
-        risk_amount = account_size * risk_per_trade
-        return risk_amount / risk_per_share
+        # Use dynamic account size or default for testing
+        current_equity = account_size if account_size is not None else 100000
+        base_risk_amount = current_equity * risk_per_trade
+        
+        # Volatility adjustment based on current regime
+        if volatility_adjustment:
+            current_regime = self.regime_detector.detect_current_regime()
+            volatility_multiplier = self._get_volatility_position_multiplier(current_regime)
+            adjusted_risk_amount = base_risk_amount * volatility_multiplier
+        else:
+            adjusted_risk_amount = base_risk_amount
+        
+        return adjusted_risk_amount / risk_per_share
+    
+    def _get_volatility_position_multiplier(self, regime: RegimeData) -> float:
+        """Get position size multiplier based on volatility regime.
+        
+        Returns:
+            Multiplier for position sizing (0.5-1.5 range)
+        """
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            return 1.2  # Increase size in low volatility
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            return 0.7  # Reduce size in high volatility
+        else:
+            return 1.0  # Normal size in medium volatility
+    
+    def _get_volatility_atr_multiplier(self, regime: RegimeData) -> float:
+        """Get ATR multiplier for stop losses based on volatility regime.
+        
+        Returns:
+            ATR multiplier (1.5-2.5 range) with 2.0 as standard
+        """
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            return 1.5  # Tighter stops in low volatility
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            return 2.5  # Wider stops in high volatility
+        else:
+            return 2.0  # Standard 2 ATR stops
+    
+    def calculate_kelly_position_size(self, entry_price: float, stop_loss: float, target_price: float,
+                                    win_rate: float, account_size: Optional[float] = None) -> float:
+        """Calculate position size using Kelly Criterion (conservative implementation).
+        
+        Args:
+            entry_price: Entry price
+            stop_loss: Stop loss price  
+            target_price: Target price
+            win_rate: Historical win rate for this setup (0.0-1.0)
+            account_size: Current account equity
+            
+        Returns:
+            Position size in shares using Kelly formula
+        """
+        if win_rate <= 0 or win_rate >= 1:
+            # Fallback to standard sizing if invalid win rate
+            return self.calculate_position_size(entry_price, stop_loss, account_size=account_size)
+        
+        # Calculate win/loss ratios
+        win_amount = abs(target_price - entry_price)
+        loss_amount = abs(entry_price - stop_loss)
+        
+        if loss_amount == 0:
+            return 0
+            
+        win_loss_ratio = win_amount / loss_amount
+        lose_rate = 1 - win_rate
+        
+        # Kelly percentage: (bp - q) / b where b=win/loss ratio, p=win rate, q=loss rate
+        kelly_pct = (win_loss_ratio * win_rate - lose_rate) / win_loss_ratio
+        
+        # Conservative Kelly: cap at 5% and use half Kelly for safety
+        conservative_kelly = min(0.05, max(0.01, kelly_pct * 0.5))
+        
+        current_equity = account_size if account_size is not None else 100000
+        risk_amount = current_equity * conservative_kelly
+        
+        return risk_amount / loss_amount
 
 
 class TrendPullbackSetup(BaseSetup):
@@ -138,24 +226,25 @@ class TrendPullbackSetup(BaseSetup):
         recent_high = data['High'].rolling(20).max().iloc[-1]
         pullback_pct = (recent_high - current_price) / recent_high
         
-        # Look for 3-8% pullback
-        if not (0.03 <= pullback_pct <= 0.08):
+        # Look for 2-5% pullback (optimized range)
+        if not (0.02 <= pullback_pct <= 0.05):
             return None
         
         # Check for bounce signal (price above yesterday's high)
         if len(data) > 1 and current_price <= data['High'].iloc[-2]:
             return None
         
-        # Position sizing and risk management
-        stop_loss = current_price - (2 * atr)  # 2 ATR stop
-        target_price = current_price + (3 * atr)  # 3:2 reward/risk
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
+        stop_loss = current_price - (atr_multiplier * atr)
+        target_price = current_price + (atr_multiplier * 1.5 * atr)  # 1.5:1 reward/risk
         
         # Regime-based confidence adjustment
         confidence = self._calculate_confidence(regime, pullback_pct)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -243,24 +332,25 @@ class BreakoutContinuationSetup(BaseSetup):
         if current_price <= high_20d:
             return None
         
-        # Require volume confirmation (1.5x average)
+        # Require volume confirmation (2.0x average - improved threshold)
         volume_ratio = current_volume / avg_volume
-        if volume_ratio < 1.5:
+        if volume_ratio < 2.0:
             return None
         
         # Calculate breakout strength
         breakout_pct = (current_price - high_20d) / high_20d
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         stop_loss = high_20d * 0.98  # Just below breakout level
-        target_price = current_price + (2 * atr)  # 2 ATR target
+        target_price = current_price + (atr_multiplier * atr)  # ATR target
         
         # Regime-based confidence
         confidence = self._calculate_breakout_confidence(regime, volume_ratio, breakout_pct)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -341,8 +431,8 @@ class OversoldMeanReversionSetup(BaseSetup):
         bb_middle = data['BB_Middle'].iloc[-1]
         atr = data['ATR'].iloc[-1]
         
-        # Check oversold conditions
-        if rsi > 30:  # RSI not oversold
+        # Check oversold conditions (optimized for ETFs)
+        if rsi > 25:  # RSI not oversold (tightened from 30)
             return None
         
         if current_price > bb_lower:  # Not below lower Bollinger Band
@@ -352,8 +442,9 @@ class OversoldMeanReversionSetup(BaseSetup):
         if len(data) > 1 and current_price <= data['Low'].iloc[-2]:
             return None
         
-        # Position sizing and risk management
-        stop_loss = current_price - (1.5 * atr)  # Tight stop for mean reversion
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime) * 0.75  # Tighter for mean reversion
+        stop_loss = current_price - (atr_multiplier * atr)
         target_price = bb_middle  # Target middle Bollinger Band
         
         # Regime-based confidence
@@ -361,7 +452,7 @@ class OversoldMeanReversionSetup(BaseSetup):
         if confidence < 0.4:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -512,12 +603,13 @@ class RegimeRotationSetup(BaseSetup):
         if current_price < sma20:
             return None
         
-        # Position sizing and risk management
-        stop_loss = current_price - (2 * atr)
-        target_price = current_price + (2 * atr)
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
+        stop_loss = current_price - (atr_multiplier * atr)
+        target_price = current_price + (atr_multiplier * atr)
         
         confidence = 0.6  # Base confidence for rotation plays
-        position_size = self.calculate_position_size(current_price, stop_loss, risk_per_trade=0.015)  # Smaller risk
+        position_size = self.calculate_position_size(current_price, stop_loss, risk_per_trade=0.015, volatility_adjustment=True)  # Smaller risk
         
         return TradeSignal(
             symbol=symbol,
@@ -593,16 +685,17 @@ class GapFillReversalSetup(BaseSetup):
         atr = data['ATR'].iloc[-1]
         gap_fill_level = prev_close
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         stop_loss = today_low * 0.98  # Just below today's low
-        target_price = min(gap_fill_level, current_price + (2 * atr))  # Gap fill or 2 ATR
+        target_price = min(gap_fill_level, current_price + (atr_multiplier * atr))  # Gap fill or ATR target
         
         # Confidence calculation
         confidence = self._calculate_gap_confidence(regime, abs(gap_pct), recovery_pct, volume_ratio)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -717,16 +810,17 @@ class RelativeStrengthMomentumSetup(BaseSetup):
         if current_price < sma20:
             return None
         
-        # Position sizing and risk management
-        stop_loss = current_price - (2 * atr)
-        target_price = current_price + (2.5 * atr)  # Slightly higher target for momentum
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
+        stop_loss = current_price - (atr_multiplier * atr)
+        target_price = current_price + (atr_multiplier * 1.25 * atr)  # Slightly higher target for momentum
         
         # Confidence calculation
         confidence = self._calculate_strength_confidence(regime, relative_performance, symbol_return)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -828,10 +922,11 @@ class VolatilityContractionSetup(BaseSetup):
         # Determine direction bias based on SMA alignment
         direction_bullish = current_price > sma50 and sma20 > sma50
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
         if direction_bullish:
-            stop_loss = current_price - (1.5 * current_atr)  # Tighter stop due to low volatility
-            target_price = current_price + (3 * current_atr)  # Expect volatility expansion
+            atr_multiplier = self._get_volatility_atr_multiplier(regime) * 0.75  # Tighter for low vol setups
+            stop_loss = current_price - (atr_multiplier * current_atr)
+            target_price = current_price + (atr_multiplier * 2 * current_atr)  # Expect volatility expansion
         else:
             return None  # Only trade bullish setups for now
         
@@ -840,7 +935,7 @@ class VolatilityContractionSetup(BaseSetup):
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -945,16 +1040,17 @@ class DividendDistributionPlaySetup(BaseSetup):
         if sector not in dividend_sectors:
             return None
         
-        # Position sizing and risk management
-        stop_loss = current_price - (1.5 * atr)  # Tighter stop for dividend plays
-        target_price = current_price + (1 * atr)  # Conservative target
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime) * 0.75  # Tighter for dividend plays
+        stop_loss = current_price - (atr_multiplier * atr)
+        target_price = current_price + (atr_multiplier * 0.75 * atr)  # Conservative target
         
         # Confidence calculation
         confidence = self._calculate_dividend_confidence(regime, sector)
         if confidence < 0.4:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss, risk_per_trade=0.015)  # Lower risk
+        position_size = self.calculate_position_size(current_price, stop_loss, risk_per_trade=0.015, volatility_adjustment=True)  # Lower risk
         
         return TradeSignal(
             symbol=symbol,
@@ -1072,23 +1168,25 @@ class ElderTripleScreenSetup(BaseSetup):
         if current_price <= prev_high:
             return None
         
-        # Volume confirmation (1.5x+ average)
+        # Volume confirmation (2.0x+ average - improved threshold)
         volume_ratio = current_volume / avg_volume
-        if volume_ratio < 1.5:
+        if volume_ratio < 2.0:
             return None
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
         atr = data['ATR'].iloc[-1]
+        current_regime = self.regime_detector.detect_current_regime()
+        atr_multiplier = self._get_volatility_atr_multiplier(current_regime)
         recent_swing_low = data['Low'].rolling(10).min().iloc[-1]
-        stop_loss = max(recent_swing_low, current_price - (2 * atr))
-        target_price = current_price + (3 * atr)  # 3:2 reward/risk
+        stop_loss = max(recent_swing_low, current_price - (atr_multiplier * atr))
+        target_price = current_price + (atr_multiplier * 1.5 * atr)  # 1.5:1 reward/risk
         
         # Confidence calculation
         confidence = self._calculate_triple_screen_confidence(regime, rsi, stoch_k, volume_ratio)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -1221,10 +1319,11 @@ class InstitutionalVolumeClimaxSetup(BaseSetup):
         if len(data) > 1 and current_price <= data['Close'].iloc[-2]:
             return None
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
         atr = data['ATR'].iloc[-1]
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         stop_loss = support_level * 0.96  # Below support level
-        target_price = current_price + (2.5 * atr)  # Conservative target
+        target_price = current_price + (atr_multiplier * 1.25 * atr)  # Conservative target
         
         # Confidence calculation
         max_volume_ratio = max(volume_ratios)
@@ -1232,7 +1331,7 @@ class InstitutionalVolumeClimaxSetup(BaseSetup):
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -1358,10 +1457,10 @@ class FailedBreakdownReversalSetup(BaseSetup):
         if current_price <= key_support:
             return None
         
-        # Volume confirmation on reversal day
+        # Volume confirmation on reversal day (improved threshold)
         avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
         volume_ratio = current_volume / avg_volume
-        if volume_ratio < 1.2:
+        if volume_ratio < 2.0:  # Increased from 1.2 to 2.0
             return None
         
         # Calculate time since breakdown (should be recent)
@@ -1374,20 +1473,21 @@ class FailedBreakdownReversalSetup(BaseSetup):
         if days_since_breakdown > 3:  # Too long ago
             return None
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
         atr = data['ATR'].iloc[-1]
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         stop_loss = breakdown_low * 0.98  # Below failed breakdown low
         
-        # Target previous resistance or 2.5 ATR
+        # Target previous resistance or ATR-based
         recent_high = data['High'].rolling(20).max().iloc[-1]
-        target_price = min(recent_high, current_price + (2.5 * atr))
+        target_price = min(recent_high, current_price + (atr_multiplier * 1.25 * atr))
         
         # Confidence calculation
         confidence = self._calculate_breakdown_confidence(regime, volume_ratio, days_since_breakdown, current_price, key_support)
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -1525,13 +1625,14 @@ class EarningsExpectationResetSetup(BaseSetup):
         if not setup_pattern:
             return None
         
-        # Position sizing and risk management
+        # Position sizing and risk management with volatility adjustment
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         if setup_pattern == "post_earnings_pullback":
-            stop_loss = current_price - (2 * atr)
-            target_price = current_price + (2.5 * atr)
+            stop_loss = current_price - (atr_multiplier * atr)
+            target_price = current_price + (atr_multiplier * 1.25 * atr)
         else:  # breakout
             stop_loss = sma20 * 0.98
-            target_price = current_price + (2 * atr)
+            target_price = current_price + (atr_multiplier * atr)
         
         # Base confidence from reduced uncertainty
         confidence = 0.6 + confidence_boost
@@ -1545,7 +1646,7 @@ class EarningsExpectationResetSetup(BaseSetup):
         if confidence < 0.5:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
         
         return TradeSignal(
             symbol=symbol,
@@ -1574,6 +1675,181 @@ class EarningsExpectationResetSetup(BaseSetup):
         return confidence > 0.4, confidence
 
 
+class ElderForceImpulseSetup(BaseSetup):
+    """Elder's Force Index + Impulse System setup - combines price, volume, trend, and momentum."""
+    
+    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+        signals = []
+        current_regime = self.regime_detector.detect_current_regime()
+        
+        for symbol in symbols:
+            try:
+                data = self.get_market_data(symbol, period="6mo")
+                if len(data) < 50:  # Need enough data for indicators
+                    continue
+                
+                signal = self._analyze_elder_force_impulse(symbol, data, current_regime)
+                if signal:
+                    signals.append(signal)
+                    
+            except Exception as e:
+                print(f"Error analyzing {symbol}: {e}")
+        
+        return signals
+    
+    def _analyze_elder_force_impulse(self, symbol: str, data: pd.DataFrame, regime: RegimeData) -> Optional[TradeSignal]:
+        """Analyze for Elder Force Index + Impulse System opportunity."""
+        if len(data) < 2:
+            return None
+            
+        current_price = data['Close'].iloc[-1]
+        
+        # Check if we have required indicators
+        required_indicators = ['EMA13', 'Force_Index', 'MACD_Line', 'MACD_Histogram']
+        for indicator in required_indicators:
+            if indicator not in data.columns or pd.isna(data[indicator].iloc[-1]):
+                return None
+        
+        ema13 = data['EMA13'].iloc[-1]
+        force_index = data['Force_Index'].iloc[-1]
+        macd_line = data['MACD_Line'].iloc[-1]
+        macd_histogram = data['MACD_Histogram'].iloc[-1]
+        
+        # Trend Filter: Price above 13-period EMA (uptrend)
+        if current_price < ema13:
+            return None
+        
+        # Force Index: Should be below zero (oversold) initially
+        if len(data) < 5:
+            return None
+            
+        # Look for Force Index crossing above zero in recent bars
+        force_index_prev = data['Force_Index'].iloc[-2]
+        force_cross_above = force_index > 0 and force_index_prev <= 0
+        
+        # If not crossing above now, look for recent oversold condition
+        recent_oversold = any(data['Force_Index'].tail(5) < 0)
+        
+        if not force_cross_above and not recent_oversold:
+            return None
+        
+        # Impulse System: Check for green bar (both EMA and MACD rising)
+        if len(data) < 2:
+            return None
+            
+        ema13_prev = data['EMA13'].iloc[-2]
+        macd_hist_prev = data['MACD_Histogram'].iloc[-2]
+        
+        ema_rising = ema13 > ema13_prev
+        macd_rising = macd_histogram > macd_hist_prev
+        
+        # Green bar: both indicators rising
+        impulse_green = ema_rising and macd_rising
+        
+        if not impulse_green:
+            return None
+        
+        # Entry confirmation: Force Index positive with green impulse
+        if force_index <= 0 and not force_cross_above:
+            return None
+        
+        # Position sizing and risk management with volatility adjustment
+        atr = data['ATR'].iloc[-1] if 'ATR' in data.columns else current_price * 0.02
+        current_regime = self.regime_detector.detect_current_regime()
+        atr_multiplier = self._get_volatility_atr_multiplier(current_regime)
+        
+        # Stop loss: Below recent swing low or when impulse might turn red
+        recent_low = data['Low'].rolling(10).min().iloc[-1]
+        stop_loss = max(recent_low, current_price - (atr_multiplier * atr))
+        
+        # Target: ATR-based or when Force Index shows exhaustion
+        target_price = current_price + (atr_multiplier * 1.25 * atr)
+        
+        # Confidence calculation
+        confidence = self._calculate_elder_confidence(regime, force_index, force_cross_above, 
+                                                     ema_rising, macd_rising, current_price, ema13)
+        if confidence < 0.5:
+            return None
+        
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
+        
+        # Create detailed notes
+        impulse_status = "GREEN" if impulse_green else "MIXED"
+        fi_status = "CROSSING" if force_cross_above else "POSITIVE"
+        
+        return TradeSignal(
+            symbol=symbol,
+            setup_type=SetupType.ELDER_FORCE_IMPULSE,
+            signal_strength=SignalStrength.STRONG if confidence > 0.75 else SignalStrength.MEDIUM,
+            entry_price=current_price,
+            stop_loss=stop_loss,
+            target_price=target_price,
+            position_size=position_size,
+            risk_per_share=current_price - stop_loss,
+            confidence=confidence,
+            regime_context=regime,
+            notes=f"Elder Force Impulse: FI {fi_status}, Impulse {impulse_status}, price {current_price/ema13:.2%} above EMA13"
+        )
+    
+    def _calculate_elder_confidence(self, regime: RegimeData, force_index: float, force_cross_above: bool,
+                                   ema_rising: bool, macd_rising: bool, current_price: float, ema13: float) -> float:
+        """Calculate confidence for Elder Force Index Impulse signal."""
+        confidence = 0.5  # Base confidence
+        
+        # Force Index confirmation
+        if force_cross_above:
+            confidence += 0.2  # Strong signal when crossing above zero
+        elif force_index > 0:
+            confidence += 0.1  # Moderate signal when already positive
+        
+        # Impulse System strength
+        if ema_rising and macd_rising:
+            confidence += 0.2  # Perfect alignment
+        elif ema_rising or macd_rising:
+            confidence += 0.1  # Partial alignment
+        
+        # Trend strength (distance above EMA13)
+        price_above_ema = (current_price - ema13) / ema13
+        if 0.02 <= price_above_ema <= 0.05:  # Sweet spot: 2-5% above EMA
+            confidence += 0.15
+        elif price_above_ema > 0.05:
+            confidence += 0.05  # Too extended
+        
+        # Regime adjustments
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.15
+        elif regime.trend_regime == TrendRegime.DOWNTREND:
+            confidence -= 0.2
+        
+        # Volume/volatility regime
+        if regime.volatility_regime == VolatilityRegime.MEDIUM:
+            confidence += 0.1  # Elder's system works well in normal volatility
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.1  # High volatility can cause whipsaws
+        
+        return min(1.0, max(0.0, confidence))
+    
+    def validate_signal(self, symbol: str, regime: RegimeData) -> Tuple[bool, float]:
+        """Validate if Elder Force Impulse signal is suitable for current regime."""
+        confidence = 0.7
+        
+        # Works best in trending markets
+        if regime.trend_regime in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+            confidence += 0.2
+        elif regime.trend_regime == TrendRegime.DOWNTREND:
+            confidence -= 0.3
+        elif regime.trend_regime == TrendRegime.RANGING:
+            confidence -= 0.1
+        
+        # Moderate volatility preferred
+        if regime.volatility_regime == VolatilityRegime.MEDIUM:
+            confidence += 0.1
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.2
+        
+        return confidence > 0.5, confidence
+
+
 class SetupManager:
     """Manages all trade setups and scanning."""
     
@@ -1591,7 +1867,8 @@ class SetupManager:
             SetupType.ELDER_TRIPLE_SCREEN: ElderTripleScreenSetup(db_path),
             SetupType.INSTITUTIONAL_VOLUME_CLIMAX: InstitutionalVolumeClimaxSetup(db_path),
             SetupType.FAILED_BREAKDOWN_REVERSAL: FailedBreakdownReversalSetup(db_path),
-            SetupType.EARNINGS_EXPECTATION_RESET: EarningsExpectationResetSetup(db_path)
+            SetupType.EARNINGS_EXPECTATION_RESET: EarningsExpectationResetSetup(db_path),
+            SetupType.ELDER_FORCE_IMPULSE: ElderForceImpulseSetup(db_path)
         }
     
     def get_all_symbols(self) -> List[str]:

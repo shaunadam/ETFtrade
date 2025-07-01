@@ -246,7 +246,8 @@ class DataCache:
         
         # Cache indicators
         indicator_data = []
-        indicator_columns = ['SMA20', 'SMA50', 'SMA200', 'RSI', 'ATR', 'BB_Upper', 'BB_Lower', 'BB_Middle']
+        indicator_columns = ['SMA20', 'SMA50', 'SMA200', 'RSI', 'ATR', 'BB_Upper', 'BB_Lower', 'BB_Middle', 
+                            'EMA13', 'Force_Index', 'MACD_Line', 'MACD_Histogram']
         
         for date_idx, row in data.iterrows():
             for indicator in indicator_columns:
@@ -291,6 +292,11 @@ class DataCache:
             # Bollinger Bands
             data['BB_Upper'], data['BB_Lower'], data['BB_Middle'] = self._calculate_bollinger_bands(data['Close'])
             
+            # Elder Force Index System indicators
+            data['EMA13'] = data['Close'].ewm(span=13).mean()
+            data['Force_Index'] = self._calculate_force_index(data)
+            data['MACD_Line'], data['MACD_Histogram'] = self._calculate_macd(data['Close'])
+            
         except Exception as e:
             logger.error(f"Error calculating indicators: {e}")
         
@@ -323,6 +329,36 @@ class DataCache:
         lower = sma - (std * num_std)
         
         return upper, lower, sma
+    
+    def _calculate_force_index(self, data: pd.DataFrame, period: int = 13) -> pd.Series:
+        """Calculate Force Index and its EMA smoothing."""
+        if len(data) < 2:
+            return pd.Series(index=data.index, dtype=float)
+        
+        # Force Index = (Close - Previous Close) × Volume
+        price_change = data['Close'] - data['Close'].shift(1)
+        raw_force_index = price_change * data['Volume']
+        
+        # 13-period EMA smoothing
+        return raw_force_index.ewm(span=period).mean()
+    
+    def _calculate_macd(self, prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> Tuple[pd.Series, pd.Series]:
+        """Calculate MACD Line and MACD Histogram."""
+        if len(prices) < slow + signal:
+            return pd.Series(index=prices.index, dtype=float), pd.Series(index=prices.index, dtype=float)
+        
+        # MACD Line = 12-period EMA - 26-period EMA
+        ema_fast = prices.ewm(span=fast).mean()
+        ema_slow = prices.ewm(span=slow).mean()
+        macd_line = ema_fast - ema_slow
+        
+        # Signal Line = 9-period EMA of MACD Line
+        signal_line = macd_line.ewm(span=signal).mean()
+        
+        # MACD Histogram = MACD Line - Signal Line
+        macd_histogram = macd_line - signal_line
+        
+        return macd_line, macd_histogram
     
     def update_market_data(self, symbols: Optional[List[str]] = None, 
                           force_full_refresh: bool = False) -> None:

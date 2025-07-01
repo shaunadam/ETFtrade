@@ -83,6 +83,7 @@ python screener.py --setup elder_triple_screen           # Multi-timeframe trend
 python screener.py --setup institutional_volume_climax   # Institutional accumulation setups
 python screener.py --setup failed_breakdown_reversal     # Bear trap reversal setups
 python screener.py --setup earnings_expectation_reset    # Post-earnings technical setups
+python screener.py --setup elder_force_impulse           # Elder's Force Index + Impulse System
 python journal.py --open-trades --correlations           # Check current positions
 python report.py --daily --vs-spy                        # Quick performance check
 
@@ -152,6 +153,7 @@ sqlite3 journal.db ".schema"                            # View database schema
 - **Institutional Volume Climax**: Detect accumulation during retail panic selling
 - **Failed Breakdown Reversal**: Capitalize on bear traps and quick reversals
 - **Earnings Expectation Reset**: Trade technical patterns after earnings uncertainty is removed
+- **Elder Force Impulse**: Dr. Elder's Force Index + Impulse System combining price, volume, trend, and momentum
 
 ### Risk Management Rules
 - Max 2% capital risk per trade
@@ -172,7 +174,7 @@ The system implements intelligent data caching to minimize API calls and improve
 - **Smart Refresh Strategy**: Always refreshes last 5 trading days
 - **Healing Logic**: Ensures 200+ day buffer for SMA200 calculations
 - **95% API Reduction**: Dramatically reduces yfinance API calls
-- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands)
+- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands, EMA13, Force Index, MACD Line/Histogram)
 - **Graceful Fallback**: Seamless fallback to yfinance when cache misses
 
 ### Cache Management
@@ -191,7 +193,7 @@ python data_cache.py
 ```
 
 ### Performance Metrics
-- **Cache Size**: 6,400+ price records, 37,000+ indicator values
+- **Cache Size**: 6,400+ price records, 45,000+ indicator values
 - **Symbols Cached**: 50+ ETFs with full history
 - **Speed Improvement**: Screening in seconds vs minutes
 - **Data Quality**: Healing strategy ensures indicator accuracy

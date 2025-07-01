@@ -19,12 +19,12 @@
 ## Phase 2: Screener + Backtest Engine 🔄
 - [x] **Production CLI Screener**: Full-featured screener.py with export capabilities
 - [x] **Regime-Aware Filtering**: Screening with current market regime validation
-- [x] **Multiple Trade Setups**: 12 comprehensive setups covering momentum, mean reversion, gaps, volatility, dividends, multi-timeframe analysis, institutional behavior, and event-driven opportunities
+- [x] **Multiple Trade Setups**: 13 comprehensive setups covering momentum, mean reversion, gaps, volatility, dividends, multi-timeframe analysis, institutional behavior, event-driven opportunities, and Elder's advanced indicators
 - [x] **Export Functionality**: CSV and JSON export with timestamped filenames
 - [x] **Backtest Engine**: Signal-based and setup-based backtesting with performance metrics
 - [x] **Risk-Free Rate Integration**: Dedicated tables and accurate Sharpe ratio calculation
-- [ ] Build walk-forward backtesting engine
-- [ ] Add regime analysis to backtesting
+- [x] Build walk-forward backtesting engine
+- [x] Add regime analysis to backtesting
 
 ## Phase 3: Trade Journal 📋
 - [x] Design SQLite database schema (instruments, regimes done, more required for each feature developed)
@@ -54,13 +54,15 @@
 **Next Steps**: Build walk-forward backtesting engine with regime analysis
 
 ## Recent Improvements (2025-07-01)
+- **✅ Elder Force Index Impulse System**: Added Dr. Elder's advanced setup combining Force Index + Impulse System for volume/price/momentum alignment
+- **✅ Advanced Indicator Expansion**: Added Force Index, MACD Line/Histogram, and EMA13 calculations to data cache with 4 new cached indicators
 - **✅ Advanced Trade Setup Expansion**: Added 4 sophisticated setups: Elder's Triple Screen, Institutional Volume Climax, Failed Breakdown Reversal, and Earnings Expectation Reset
 - **✅ Multi-Timeframe Analysis**: Elder's Triple Screen setup brings weekly trend analysis with daily oscillator timing and intraday entry triggers
 - **✅ Institutional Intelligence**: Volume climax setup detects smart money accumulation during retail panic selling periods
 - **✅ Contrarian Opportunities**: Failed breakdown reversal setup capitalizes on bear traps and quick technical reversals
 - **✅ Event-Driven Enhancement**: Earnings expectation reset setup trades technical patterns after fundamental uncertainty is removed
 - **✅ Code Organization**: Reorganized analysis and testing files into dedicated subdirectories for better project structure
-- **✅ Database Schema Updates**: Enhanced setup registration system to accommodate 12 total trade setups with detailed parameters
+- **✅ Database Schema Updates**: Enhanced setup registration system to accommodate 13 total trade setups with detailed parameters including Elder's advanced indicator parameters
 
 ## Previous Improvements (2025-06-30)
 - **✅ Fixed Critical Data Cache Issue**: Resolved spy_vs_sma200 NULL values by ensuring sufficient historical data for SMA200 calculations
@@ -72,12 +74,12 @@
 - **✅ Enhanced User Experience**: Clear setup guidance with usage examples and next steps
 
 ## Major Achievements
-- **Enhanced Data Caching System**: 17,366+ price records, 122,106+ indicator values cached across 53 symbols
+- **Enhanced Data Caching System**: 17,366+ price records, 140,000+ indicator values cached across 53 symbols
 - **API Optimization**: 95%+ reduction in yfinance API calls
 - **Production Screener**: Daily CLI workflow with export capabilities
 - **Regime Detection**: Comprehensive market regime analysis across 4 dimensions (warning-free)
 - **Performance**: Screening 50+ ETFs in seconds vs minutes
-- **Complete Trade Setup Suite**: 12 setups covering all major trading patterns and market conditions
+- **Complete Trade Setup Suite**: 13 setups covering all major trading patterns, market conditions, and advanced indicator combinations
 - **Backtest Engine**: Signal-based and setup-based backtesting with comprehensive performance metrics
 - **Risk-Free Rate System**: Dedicated database tables with 972+ rate records across 4 sources (^IRX, BIL, ^TNX, ^FVX)
 - **First-Time Setup Excellence**: One-command initialization with full data bootstrapping

@@ -135,10 +135,11 @@ class BacktestEngine:
         self.regime_detector = RegimeDetector(db_path)
         self.setup_manager = SetupManager(db_path)
         
-        # Risk management parameters
+        # Risk management parameters (optimized for ETF diversification)
         self.max_risk_per_trade = 0.02  # 2% per trade
-        self.max_concurrent_positions = 4
+        self.max_concurrent_positions = 6  # Increased from 4 for better ETF diversification
         self.max_sector_allocation = 0.30  # 30% max in correlated sectors
+        self.max_similar_etfs = 2  # Max 2 ETFs from same category
         
         # Trade tracking
         self.trades: List[BacktestTrade] = []
@@ -519,7 +520,7 @@ class BacktestEngine:
         return all_signals[:5]  # Limit to top 5 signals per day
     
     def _can_enter_trade(self, signal: TradeSignal, current_date: datetime) -> bool:
-        """Check if we can enter a new trade based on risk management rules."""
+        """Check if we can enter a new trade based on enhanced risk management rules."""
         
         # Check position limits
         if len(self.current_positions) >= self.max_concurrent_positions:
@@ -529,14 +530,74 @@ class BacktestEngine:
         if any(pos.symbol == signal.symbol for pos in self.current_positions):
             return False
         
-        # Check sector allocation (simplified - could be enhanced)
-        # For now, just check we don't have too many similar ETFs
-        similar_symbols = [pos.symbol for pos in self.current_positions 
-                          if pos.symbol.startswith(signal.symbol[:2])]
-        if len(similar_symbols) >= 2:  # Max 2 similar ETFs
+        # Enhanced sector correlation checking
+        if not self._check_sector_allocation(signal.symbol):
+            return False
+        
+        # Check portfolio heat (total risk exposure)
+        if not self._check_portfolio_heat(signal):
             return False
         
         return True
+    
+    def _check_sector_allocation(self, symbol: str) -> bool:
+        """Check if adding this symbol would violate sector allocation limits."""
+        try:
+            # Get sector for the new symbol
+            new_sector = self._get_symbol_sector(symbol)
+            if new_sector == "Unknown":
+                return True  # Allow unknown sectors
+            
+            # Count current positions in same sector
+            sector_positions = 0
+            for pos in self.current_positions:
+                pos_sector = self._get_symbol_sector(pos.symbol)
+                if pos_sector == new_sector:
+                    sector_positions += 1
+            
+            # Check if we'd exceed max similar ETFs
+            return sector_positions < self.max_similar_etfs
+            
+        except Exception:
+            return True  # Allow trade if sector check fails
+    
+    def _check_portfolio_heat(self, signal: TradeSignal) -> bool:
+        """Check if total portfolio risk exposure is within limits."""
+        try:
+            # Calculate current total risk exposure
+            current_equity = self.daily_equity[-1] if self.daily_equity else self.initial_capital
+            total_current_risk = 0
+            
+            for pos in self.current_positions:
+                position_risk = pos.position_size * pos.risk_per_share
+                total_current_risk += position_risk
+            
+            # Calculate risk for new position
+            new_position_risk = current_equity * self.max_risk_per_trade
+            
+            # Check if total risk would exceed 8% of capital (4 positions * 2% each)
+            max_total_risk = current_equity * 0.08
+            
+            return (total_current_risk + new_position_risk) <= max_total_risk
+            
+        except Exception:
+            return True  # Allow trade if heat check fails
+    
+    def _get_symbol_sector(self, symbol: str) -> str:
+        """Get sector for a symbol from database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT sector, theme FROM instruments WHERE symbol = ?", (symbol,))
+                result = cursor.fetchone()
+                
+                if result and result[0]:
+                    return result[0]
+                elif result and result[1]:
+                    return result[1]
+                
+                return "Unknown"
+        except Exception:
+            return "Unknown"
     
     def _enter_trade(self, signal: TradeSignal, entry_date: datetime):
         """Enter a new trade position using optimized parameters."""
@@ -550,7 +611,7 @@ class BacktestEngine:
         optimized_stop_loss = entry_price * (1 - self.current_params.stop_loss_pct)
         optimized_target = entry_price * (1 + self.current_params.stop_loss_pct * self.current_params.profit_target_r)
         
-        # Calculate position size based on optimized stop loss
+        # Calculate position size based on optimized stop loss using dynamic equity
         risk_per_share = entry_price - optimized_stop_loss
         position_size = max_risk_amount / risk_per_share if risk_per_share > 0 else signal.position_size
         
