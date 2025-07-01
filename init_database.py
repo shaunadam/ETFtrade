@@ -253,6 +253,55 @@ def load_etf_data(cursor, csv_file_path):
         print(f"❌ Error loading ETF data: {e}")
         return False
 
+def load_stock_data(cursor, csv_file_path):
+    """Load stock data from CSV into instruments table."""
+    
+    if not Path(csv_file_path).exists():
+        print(f"❌ Stock CSV file not found: {csv_file_path}")
+        return False
+    
+    try:
+        with open(csv_file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            stock_count = 0
+            
+            for row in reader:
+                # Create tags from various fields for filtering
+                tags = []
+                if row.get('market_cap_category'): tags.append(row['market_cap_category'].lower().replace(' ', '_'))
+                if row.get('beta_category'): tags.append(row['beta_category'].lower().replace(' ', '_'))
+                if row.get('liquidity_category'): tags.append(row['liquidity_category'].lower().replace(' ', '_'))
+                if row.get('tags'): tags.extend(row['tags'].split())
+                
+                tags_str = ','.join(tags)
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO instruments 
+                    (symbol, name, type, sector, theme, geography, leverage, 
+                     volatility_profile, avg_volume_req, tags, notes) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    row['symbol'],
+                    row['name'],
+                    'Stock',  # Individual stock type
+                    row.get('sector', ''),
+                    row.get('market_cap_category', ''),  # Use market cap as theme for stocks
+                    'US',  # All stocks in list are US-based
+                    '1x',  # Individual stocks are unlevered
+                    row.get('beta_category', ''),  # Use beta category as volatility profile
+                    row.get('liquidity_category', ''),
+                    tags_str,
+                    f"Beta: {row.get('beta_category', 'Unknown')}, Market Cap: {row.get('market_cap_category', 'Unknown')}"
+                ))
+                stock_count += 1
+            
+            print(f"✅ Loaded {stock_count} stocks into instruments table")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Error loading stock data: {e}")
+        return False
+
 def insert_default_setups(cursor):
     """Insert default trade setups (all 13 from trade_setups.py)."""
     
@@ -301,7 +350,7 @@ def insert_risk_free_rate_metadata(cursor):
     print("✅ Risk-free rate metadata created")
 
 def bootstrap_market_data(cursor, bootstrap_level="core"):
-    """Bootstrap market data for ETFs."""
+    """Bootstrap market data for ETFs and stocks."""
     from data_cache import DataCache
     
     cache = DataCache()
@@ -309,28 +358,44 @@ def bootstrap_market_data(cursor, bootstrap_level="core"):
     # Define ETF groups
     core_etfs = ["SPY", "QQQ", "IWM", "XLK", "XLF", "XLU", "XLP", "TLT"]  # Regime detection
     
+    # Define stock groups for bootstrapping
+    core_stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM", "JNJ", "UNH"]  # Diversified core
+    priority_stocks = ["AMD", "CRM", "NFLX", "SHOP", "ROKU", "ZM", "SNOW", "PLTR", "NET", "DDOG", 
+                      "ZS", "MRNA", "GILD", "BAC", "GS", "XOM", "CVX", "FCX", "NEM", "UBER"]  # High-growth/momentum
+    
     if bootstrap_level == "core":
-        etfs_to_bootstrap = core_etfs
-        print(f"📡 Bootstrapping core regime detection ETFs ({len(etfs_to_bootstrap)} symbols)...")
+        symbols_to_bootstrap = core_etfs
+        print(f"📡 Bootstrapping core regime detection ETFs ({len(symbols_to_bootstrap)} symbols)...")
     elif bootstrap_level == "priority":
         # Add high-priority trading ETFs
         priority_etfs = ["ARKK", "EEM", "GLD", "IBB", "ICLN", "KWEB", "VTI", "EFA"]
-        etfs_to_bootstrap = core_etfs + priority_etfs
-        print(f"📡 Bootstrapping priority ETFs ({len(etfs_to_bootstrap)} symbols)...")
+        symbols_to_bootstrap = core_etfs + priority_etfs
+        print(f"📡 Bootstrapping priority ETFs ({len(symbols_to_bootstrap)} symbols)...")
     elif bootstrap_level == "all":
         # Get all ETFs from database
         cursor.execute("SELECT symbol FROM instruments WHERE type IN ('ETF', 'ETN') ORDER BY symbol")
-        etfs_to_bootstrap = [row[0] for row in cursor.fetchall()]
-        print(f"📡 Bootstrapping all ETFs ({len(etfs_to_bootstrap)} symbols)...")
+        symbols_to_bootstrap = [row[0] for row in cursor.fetchall()]
+        print(f"📡 Bootstrapping all ETFs ({len(symbols_to_bootstrap)} symbols)...")
+    elif bootstrap_level == "stocks_core":
+        symbols_to_bootstrap = core_stocks
+        print(f"📡 Bootstrapping core stocks ({len(symbols_to_bootstrap)} symbols)...")
+    elif bootstrap_level == "stocks_priority":
+        symbols_to_bootstrap = core_stocks + priority_stocks
+        print(f"📡 Bootstrapping priority stocks ({len(symbols_to_bootstrap)} symbols)...")
+    elif bootstrap_level == "stocks_all":
+        # Get all stocks from database
+        cursor.execute("SELECT symbol FROM instruments WHERE type = 'Stock' ORDER BY symbol")
+        symbols_to_bootstrap = [row[0] for row in cursor.fetchall()]
+        print(f"📡 Bootstrapping all stocks ({len(symbols_to_bootstrap)} symbols)...")
     else:
-        print("❌ Invalid bootstrap level. Use: core, priority, or all")
+        print("❌ Invalid bootstrap level. Use: core, priority, all, stocks_core, stocks_priority, or stocks_all")
         return False
     
     success_count = 0
     
-    for i, symbol in enumerate(etfs_to_bootstrap, 1):
+    for i, symbol in enumerate(symbols_to_bootstrap, 1):
         try:
-            print(f"   [{i:2d}/{len(etfs_to_bootstrap)}] {symbol}...", end=" ")
+            print(f"   [{i:2d}/{len(symbols_to_bootstrap)}] {symbol}...", end=" ")
             
             # Bootstrap with 2+ years of data
             data = cache._fetch_and_cache_data(symbol, "2y")
@@ -344,7 +409,7 @@ def bootstrap_market_data(cursor, bootstrap_level="core"):
         except Exception as e:
             print(f"❌ Error: {str(e)[:50]}...")
     
-    print(f"\n✅ Bootstrapped {success_count}/{len(etfs_to_bootstrap)} ETFs successfully")
+    print(f"\n✅ Bootstrapped {success_count}/{len(symbols_to_bootstrap)} symbols successfully")
     return success_count > 0
 
 
@@ -354,17 +419,21 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Initialize ETF Trading System Database")
-    parser.add_argument("--bootstrap", choices=["core", "priority", "all"], 
-                       help="Bootstrap market data (core=regime ETFs, priority=top ETFs, all=everything)")
+    parser.add_argument("--bootstrap", 
+                       choices=["core", "priority", "all", "stocks_core", "stocks_priority", "stocks_all"], 
+                       help="Bootstrap market data (core=regime ETFs, priority=top ETFs, all=everything, stocks_core=core stocks, stocks_priority=priority stocks, stocks_all=all stocks)")
     parser.add_argument("--skip-data", action="store_true", 
                        help="Skip data bootstrapping (schema and symbols only)")
+    parser.add_argument("--stocks-only", action="store_true",
+                       help="Only load stocks data (skip ETFs)")
     
     args = parser.parse_args()
     
     db_path = "journal.db"
-    csv_path = "etf_list.csv"
+    etf_csv_path = "etf_list.csv"
+    stock_csv_path = "stocks_list.csv"
     
-    print("🚀 Initializing ETF Trading System Database...")
+    print("🚀 Initializing Trading System Database...")
     
     try:
         # Connect to database
@@ -374,9 +443,13 @@ def main():
         # Create schema
         create_database_schema(cursor)
         
-        # Load ETF data
-        if load_etf_data(cursor, csv_path):
-            print(f"📊 ETF data loaded from {csv_path}")
+        # Load instrument data
+        if not args.stocks_only:
+            if load_etf_data(cursor, etf_csv_path):
+                print(f"📊 ETF data loaded from {etf_csv_path}")
+        
+        if load_stock_data(cursor, stock_csv_path):
+            print(f"📈 Stock data loaded from {stock_csv_path}")
         
         # Insert default setups
         insert_default_setups(cursor)
@@ -396,8 +469,11 @@ def main():
             print("\n⏭️  Skipping data bootstrapping (use --bootstrap to include)")
         
         # Display summary
-        cursor.execute("SELECT COUNT(*) FROM instruments WHERE type = 'ETF'")
+        cursor.execute("SELECT COUNT(*) FROM instruments WHERE type IN ('ETF', 'ETN')")
         etf_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM instruments WHERE type = 'Stock'")
+        stock_count = cursor.fetchone()[0]
         
         cursor.execute("SELECT COUNT(*) FROM setups")
         setup_count = cursor.fetchone()[0]
@@ -411,6 +487,7 @@ def main():
         print(f"\n📈 Database initialized successfully!")
         print(f"   • Database: {db_path}")
         print(f"   • ETFs loaded: {etf_count}")
+        print(f"   • Stocks loaded: {stock_count}")
         print(f"   • Trade setups: {setup_count}")
         print(f"   • Price records: {price_records:,}")
         print(f"   • Indicator records: {indicator_records:,}")
@@ -421,11 +498,12 @@ def main():
             print(f"   python screener.py --help     # Explore screening options")
         else:
             print(f"\n💡 To add market data, run:")
-            print(f"   python init_database.py --bootstrap core      # Essential ETFs")
-            print(f"   python init_database.py --bootstrap priority  # Priority ETFs") 
-            print(f"   python init_database.py --bootstrap all       # All ETFs")
-        
-        print(f"   • Ready for individual stocks (future)")
+            print(f"   python init_database.py --bootstrap core           # Essential ETFs")
+            print(f"   python init_database.py --bootstrap priority       # Priority ETFs") 
+            print(f"   python init_database.py --bootstrap all            # All ETFs")
+            print(f"   python init_database.py --bootstrap stocks_core    # Core stocks")
+            print(f"   python init_database.py --bootstrap stocks_priority # Priority stocks")
+            print(f"   python init_database.py --bootstrap stocks_all     # All stocks")
         
         conn.close()
         

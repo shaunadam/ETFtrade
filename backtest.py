@@ -123,6 +123,16 @@ class PerformanceMetrics:
     consecutive_wins: int
     consecutive_losses: int
     profit_factor: float
+    
+    # Instrument type breakdown
+    etf_trades: int = 0
+    stock_trades: int = 0
+    etf_win_rate: float = 0.0
+    stock_win_rate: float = 0.0
+    etf_avg_return: float = 0.0
+    stock_avg_return: float = 0.0
+    etf_avg_r_multiple: float = 0.0
+    stock_avg_r_multiple: float = 0.0
 
 
 class BacktestEngine:
@@ -249,7 +259,8 @@ class BacktestEngine:
                      end_date: datetime,
                      setup_types: Optional[List[SetupType]] = None,
                      walk_forward: bool = False,
-                     regime_aware: bool = True) -> Dict:
+                     regime_aware: bool = True,
+                     instrument_types: Optional[List[str]] = None) -> Dict:
         """
         Run comprehensive backtest with walk-forward validation.
         
@@ -280,17 +291,18 @@ class BacktestEngine:
         
         if walk_forward:
             return self._run_walk_forward_backtest(
-                trading_days, setup_types, regime_aware
+                trading_days, setup_types, regime_aware, instrument_types
             )
         else:
             return self._run_standard_backtest(
-                trading_days, setup_types, regime_aware
+                trading_days, setup_types, regime_aware, instrument_types
             )
     
     def _run_standard_backtest(self, 
                               trading_days: List[datetime],
                               setup_types: List[SetupType],
-                              regime_aware: bool) -> Dict:
+                              regime_aware: bool,
+                              instrument_types: Optional[List[str]] = None) -> Dict:
         """Run standard backtesting without walk-forward validation."""
         
         for current_date in trading_days:
@@ -301,7 +313,7 @@ class BacktestEngine:
             
             # Look for new trade opportunities
             if len(self.current_positions) < self.max_concurrent_positions:
-                signals = self._get_signals_for_date(current_date, setup_types, regime_aware)
+                signals = self._get_signals_for_date(current_date, setup_types, regime_aware, instrument_types)
                 
                 for signal in signals:
                     if self._can_enter_trade(signal, current_date):
@@ -327,7 +339,8 @@ class BacktestEngine:
     def _run_walk_forward_backtest(self,
                                   trading_days: List[datetime],
                                   setup_types: List[SetupType],
-                                  regime_aware: bool) -> Dict:
+                                  regime_aware: bool,
+                                  instrument_types: Optional[List[str]] = None) -> Dict:
         """Run walk-forward backtesting with parameter optimization."""
         
         # Walk-forward parameters
@@ -374,7 +387,7 @@ class BacktestEngine:
             print(f"  Testing with: stop_loss={optimal_params.stop_loss_pct:.1%}, target={optimal_params.profit_target_r:.1f}R, conf={optimal_params.confidence_threshold:.2f}")
             
             # Test on out-of-sample period with optimized parameters
-            period_result = self._run_standard_backtest(test_days, setup_types, regime_aware)
+            period_result = self._run_standard_backtest(test_days, setup_types, regime_aware, instrument_types)
             period_result['optimization_params'] = asdict(optimal_params)
             
             results.append(period_result)
@@ -488,11 +501,12 @@ class BacktestEngine:
     def _get_signals_for_date(self, 
                              current_date: datetime,
                              setup_types: List[SetupType],
-                             regime_aware: bool) -> List[TradeSignal]:
+                             regime_aware: bool,
+                             instrument_types: Optional[List[str]] = None) -> List[TradeSignal]:
         """Get trade signals for a specific date."""
         
-        # Get ETF symbols from setup manager
-        symbols = self.setup_manager.get_all_symbols()
+        # Get symbols from setup manager with instrument type filtering
+        symbols = self.setup_manager.get_all_symbols(instrument_types)
         
         # Get current regime if regime-aware
         current_regime = None
@@ -598,6 +612,16 @@ class BacktestEngine:
                 return "Unknown"
         except Exception:
             return "Unknown"
+    
+    def _is_stock(self, symbol: str) -> bool:
+        """Check if symbol is an individual stock."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT type FROM instruments WHERE symbol = ?", (symbol,))
+                result = cursor.fetchone()
+                return result and result[0] == 'Stock'
+        except Exception:
+            return False
     
     def _enter_trade(self, signal: TradeSignal, entry_date: datetime):
         """Enter a new trade position using optimized parameters."""
@@ -812,6 +836,30 @@ class BacktestEngine:
         gross_loss = abs(sum(pnl for pnl in pnls if pnl < 0))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
         
+        # Calculate instrument type breakdown
+        etf_trades = sum(1 for t in self.trades if not self._is_stock(t.symbol))
+        stock_trades = sum(1 for t in self.trades if self._is_stock(t.symbol))
+        
+        etf_wins = sum(1 for t in self.trades if not self._is_stock(t.symbol) and (t.pnl or 0) > 0)
+        stock_wins = sum(1 for t in self.trades if self._is_stock(t.symbol) and (t.pnl or 0) > 0)
+        
+        etf_win_rate = etf_wins / etf_trades if etf_trades > 0 else 0
+        stock_win_rate = stock_wins / stock_trades if stock_trades > 0 else 0
+        
+        etf_r_multiples = [t.r_multiple for t in self.trades if not self._is_stock(t.symbol) and t.r_multiple is not None]
+        stock_r_multiples = [t.r_multiple for t in self.trades if self._is_stock(t.symbol) and t.r_multiple is not None]
+        
+        etf_avg_r = np.mean(etf_r_multiples) if etf_r_multiples else 0
+        stock_avg_r = np.mean(stock_r_multiples) if stock_r_multiples else 0
+        
+        etf_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trades 
+                      if not self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
+        stock_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trades 
+                        if self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
+        
+        etf_avg_return = np.mean(etf_returns) if etf_returns else 0
+        stock_avg_return = np.mean(stock_returns) if stock_returns else 0
+        
         return PerformanceMetrics(
             total_trades=total_trades,
             winning_trades=winning_trades,
@@ -827,7 +875,15 @@ class BacktestEngine:
             largest_loser=largest_loser,
             consecutive_wins=consecutive_wins,
             consecutive_losses=consecutive_losses,
-            profit_factor=profit_factor
+            profit_factor=profit_factor,
+            etf_trades=etf_trades,
+            stock_trades=stock_trades,
+            etf_win_rate=etf_win_rate,
+            stock_win_rate=stock_win_rate,
+            etf_avg_return=etf_avg_return,
+            stock_avg_return=stock_avg_return,
+            etf_avg_r_multiple=etf_avg_r,
+            stock_avg_r_multiple=stock_avg_r
         )
     
     def _calculate_max_drawdown(self) -> float:
@@ -1239,6 +1295,10 @@ Examples:
                        help="Enable walk-forward validation")
     parser.add_argument("--regime-aware", action="store_true", default=True,
                        help="Include regime analysis")
+    parser.add_argument("--type", type=str, 
+                       choices=['etf', 'stock', 'all'],
+                       default='etf',
+                       help="Instrument type to backtest (default: etf)")
     parser.add_argument("--start-date", type=str, default="2025-01-01",
                        help="Backtest start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", type=str, default="2025-06-15",
@@ -1282,12 +1342,23 @@ Examples:
         
         print(f"Running backtest for setups: {[s.value for s in setup_types]}")
         
+        # Determine instrument types based on user selection
+        if args.type == 'etf':
+            instrument_types = ['ETF', 'ETN']
+        elif args.type == 'stock':
+            instrument_types = ['Stock']
+        elif args.type == 'all':
+            instrument_types = ['ETF', 'ETN', 'Stock']
+        else:
+            instrument_types = ['ETF', 'ETN']  # Default fallback
+        
         results = engine.run_backtest(
             start_date=start_date,
             end_date=end_date,
             setup_types=setup_types,
             walk_forward=args.walk_forward,
-            regime_aware=args.regime_aware
+            regime_aware=args.regime_aware,
+            instrument_types=instrument_types
         )
     
     # Display results
@@ -1319,6 +1390,18 @@ Examples:
     print(f"Average Days Held: {perf.avg_days_held:.1f}")
     print(f"Largest Winner: ${perf.largest_winner:.2f}")
     print(f"Largest Loser: ${perf.largest_loser:.2f}")
+    
+    # Show instrument type breakdown if both ETFs and stocks were traded
+    if perf.etf_trades > 0 and perf.stock_trades > 0:
+        print("-" * 60)
+        print("INSTRUMENT TYPE BREAKDOWN")
+        print(f"ETF Trades: {perf.etf_trades} ({perf.etf_win_rate:.1%} win rate, {perf.etf_avg_r_multiple:.2f}R avg)")
+        print(f"Stock Trades: {perf.stock_trades} ({perf.stock_win_rate:.1%} win rate, {perf.stock_avg_r_multiple:.2f}R avg)")
+    elif perf.stock_trades > 0:
+        print(f"Instrument Type: Stocks only ({perf.stock_trades} trades)")
+    else:
+        print(f"Instrument Type: ETFs only ({perf.etf_trades} trades)")
+    
     print("="*60)
     
     # Display regime performance analysis if available

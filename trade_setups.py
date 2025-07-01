@@ -84,7 +84,8 @@ class BaseSetup(ABC):
     
     
     def calculate_position_size(self, entry_price: float, stop_loss: float, risk_per_trade: float = 0.02, 
-                              account_size: Optional[float] = None, volatility_adjustment: bool = True) -> float:
+                              account_size: Optional[float] = None, volatility_adjustment: bool = True,
+                              symbol: Optional[str] = None) -> float:
         """Calculate position size based on advanced risk management.
         
         Args:
@@ -93,6 +94,7 @@ class BaseSetup(ABC):
             risk_per_trade: Risk as percentage of account (default 2%)
             account_size: Current account equity (None uses default 100k for standalone testing)
             volatility_adjustment: Whether to adjust for current volatility regime
+            symbol: Symbol for instrument type detection (optional)
         
         Returns:
             Position size in shares
@@ -101,9 +103,14 @@ class BaseSetup(ABC):
         if risk_per_share == 0:
             return 0
         
+        # Adjust risk for individual stocks (more conservative)
+        adjusted_risk_per_trade = risk_per_trade
+        if symbol and self._is_stock(symbol):
+            adjusted_risk_per_trade = risk_per_trade * 0.75  # 25% reduction for stocks
+        
         # Use dynamic account size or default for testing
         current_equity = account_size if account_size is not None else 100000
-        base_risk_amount = current_equity * risk_per_trade
+        base_risk_amount = current_equity * adjusted_risk_per_trade
         
         # Volatility adjustment based on current regime
         if volatility_adjustment:
@@ -128,18 +135,49 @@ class BaseSetup(ABC):
         else:
             return 1.0  # Normal size in medium volatility
     
-    def _get_volatility_atr_multiplier(self, regime: RegimeData) -> float:
+    def _get_volatility_atr_multiplier(self, regime: RegimeData, symbol: Optional[str] = None) -> float:
         """Get ATR multiplier for stop losses based on volatility regime.
         
+        Args:
+            regime: Current market regime
+            symbol: Symbol for instrument type detection (optional)
+        
         Returns:
-            ATR multiplier (1.5-2.5 range) with 2.0 as standard
+            ATR multiplier (1.5-3.0 range) with 2.0 as standard for ETFs, 2.5 for stocks
         """
-        if regime.volatility_regime == VolatilityRegime.LOW:
-            return 1.5  # Tighter stops in low volatility
-        elif regime.volatility_regime == VolatilityRegime.HIGH:
-            return 2.5  # Wider stops in high volatility
+        # Base multiplier depends on instrument type
+        if symbol and self._is_stock(symbol):
+            base_multiplier = 2.5  # Wider stops for individual stocks
+            low_vol_multiplier = 2.0
+            high_vol_multiplier = 3.0
         else:
-            return 2.0  # Standard 2 ATR stops
+            base_multiplier = 2.0  # Standard for ETFs
+            low_vol_multiplier = 1.5
+            high_vol_multiplier = 2.5
+        
+        if regime.volatility_regime == VolatilityRegime.LOW:
+            return low_vol_multiplier  # Tighter stops in low volatility
+        elif regime.volatility_regime == VolatilityRegime.HIGH:
+            return high_vol_multiplier  # Wider stops in high volatility
+        else:
+            return base_multiplier  # Standard stops
+    
+    def _is_stock(self, symbol: str) -> bool:
+        """Check if symbol is an individual stock (vs ETF)."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT type FROM instruments WHERE symbol = ?", (symbol,))
+                result = cursor.fetchone()
+                return result and result[0] == 'Stock'
+        except Exception:
+            return False  # Default to ETF behavior if uncertain
+    
+    def _get_stock_volume_multiplier(self, symbol: str) -> float:
+        """Get volume confirmation multiplier for stocks (higher than ETFs)."""
+        if self._is_stock(symbol):
+            return 3.0  # Require 3x volume for stock breakouts
+        else:
+            return 2.0  # Standard 2x for ETFs
     
     def calculate_kelly_position_size(self, entry_price: float, stop_loss: float, target_price: float,
                                     win_rate: float, account_size: Optional[float] = None) -> float:
@@ -235,16 +273,17 @@ class TrendPullbackSetup(BaseSetup):
             return None
         
         # Position sizing and risk management with volatility adjustment
-        atr_multiplier = self._get_volatility_atr_multiplier(regime)
+        atr_multiplier = self._get_volatility_atr_multiplier(regime, symbol)
         stop_loss = current_price - (atr_multiplier * atr)
         target_price = current_price + (atr_multiplier * 1.5 * atr)  # 1.5:1 reward/risk
         
-        # Regime-based confidence adjustment
-        confidence = self._calculate_confidence(regime, pullback_pct)
-        if confidence < 0.5:
+        # Regime-based confidence adjustment with stock-specific threshold
+        confidence = self._calculate_confidence(regime, pullback_pct, symbol)
+        min_confidence = 0.6 if self._is_stock(symbol) else 0.5  # Higher threshold for stocks
+        if confidence < min_confidence:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True, symbol=symbol)
         
         return TradeSignal(
             symbol=symbol,
@@ -260,9 +299,10 @@ class TrendPullbackSetup(BaseSetup):
             notes=f"Pullback {pullback_pct:.1%} from high, trending market"
         )
     
-    def _calculate_confidence(self, regime: RegimeData, pullback_pct: float) -> float:
+    def _calculate_confidence(self, regime: RegimeData, pullback_pct: float, symbol: str = None) -> float:
         """Calculate confidence based on regime and pullback characteristics."""
-        confidence = 0.6  # Base confidence
+        # Base confidence is lower for stocks
+        confidence = 0.5 if (symbol and self._is_stock(symbol)) else 0.6
         
         # Adjust for trend strength
         if regime.trend_regime == TrendRegime.STRONG_UPTREND:
@@ -277,6 +317,10 @@ class TrendPullbackSetup(BaseSetup):
         # Adjust for pullback size (sweet spot is 4-6%)
         if 0.04 <= pullback_pct <= 0.06:
             confidence += 0.1
+        
+        # Additional penalty for stocks in high volatility
+        if symbol and self._is_stock(symbol) and regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.1
         
         return min(1.0, max(0.0, confidence))
     
@@ -332,25 +376,27 @@ class BreakoutContinuationSetup(BaseSetup):
         if current_price <= high_20d:
             return None
         
-        # Require volume confirmation (2.0x average - improved threshold)
+        # Require volume confirmation - higher threshold for stocks
         volume_ratio = current_volume / avg_volume
-        if volume_ratio < 2.0:
+        min_volume_ratio = self._get_stock_volume_multiplier(symbol)
+        if volume_ratio < min_volume_ratio:
             return None
         
         # Calculate breakout strength
         breakout_pct = (current_price - high_20d) / high_20d
         
         # Position sizing and risk management with volatility adjustment
-        atr_multiplier = self._get_volatility_atr_multiplier(regime)
+        atr_multiplier = self._get_volatility_atr_multiplier(regime, symbol)
         stop_loss = high_20d * 0.98  # Just below breakout level
         target_price = current_price + (atr_multiplier * atr)  # ATR target
         
-        # Regime-based confidence
-        confidence = self._calculate_breakout_confidence(regime, volume_ratio, breakout_pct)
-        if confidence < 0.5:
+        # Regime-based confidence with stock-specific threshold
+        confidence = self._calculate_breakout_confidence(regime, volume_ratio, breakout_pct, symbol)
+        min_confidence = 0.6 if self._is_stock(symbol) else 0.5  # Higher threshold for stocks
+        if confidence < min_confidence:
             return None
         
-        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True)
+        position_size = self.calculate_position_size(current_price, stop_loss, volatility_adjustment=True, symbol=symbol)
         
         return TradeSignal(
             symbol=symbol,
@@ -366,15 +412,22 @@ class BreakoutContinuationSetup(BaseSetup):
             notes=f"Breakout with {volume_ratio:.1f}x volume"
         )
     
-    def _calculate_breakout_confidence(self, regime: RegimeData, volume_ratio: float, breakout_pct: float) -> float:
+    def _calculate_breakout_confidence(self, regime: RegimeData, volume_ratio: float, breakout_pct: float, symbol: str = None) -> float:
         """Calculate confidence for breakout signal."""
-        confidence = 0.5  # Base confidence
+        # Base confidence is lower for stocks
+        confidence = 0.4 if (symbol and self._is_stock(symbol)) else 0.5
         
-        # Volume confirmation boosts confidence
-        if volume_ratio > 2.0:
-            confidence += 0.2
-        elif volume_ratio > 1.8:
-            confidence += 0.1
+        # Volume confirmation boosts confidence - adjusted thresholds for stocks
+        if symbol and self._is_stock(symbol):
+            if volume_ratio > 3.0:
+                confidence += 0.2
+            elif volume_ratio > 2.5:
+                confidence += 0.1
+        else:
+            if volume_ratio > 2.0:
+                confidence += 0.2
+            elif volume_ratio > 1.8:
+                confidence += 0.1
         
         # Trend regime matters
         if regime.trend_regime == TrendRegime.STRONG_UPTREND:
@@ -385,6 +438,10 @@ class BreakoutContinuationSetup(BaseSetup):
         # Low volatility is better for breakouts
         if regime.volatility_regime == VolatilityRegime.LOW:
             confidence += 0.1
+        
+        # Additional penalty for stocks in high volatility
+        if symbol and self._is_stock(symbol) and regime.volatility_regime == VolatilityRegime.HIGH:
+            confidence -= 0.15
         
         return min(1.0, max(0.0, confidence))
     
@@ -1871,15 +1928,48 @@ class SetupManager:
             SetupType.ELDER_FORCE_IMPULSE: ElderForceImpulseSetup(db_path)
         }
     
-    def get_all_symbols(self) -> List[str]:
-        """Get all ETF symbols from database."""
+    def get_all_symbols(self, instrument_types: Optional[List[str]] = None) -> List[str]:
+        """Get symbols from database, optionally filtered by instrument type.
+        
+        Args:
+            instrument_types: List of types to include ('ETF', 'Stock', 'ETN'). 
+                            If None, defaults to ETFs only for backward compatibility.
+        
+        Returns:
+            List of symbols matching the criteria
+        """
+        if instrument_types is None:
+            instrument_types = ['ETF', 'ETN']  # Default to ETFs for backward compatibility
+        
+        # Build query with proper parameterization
+        placeholders = ','.join('?' * len(instrument_types))
+        query = f"SELECT symbol FROM instruments WHERE type IN ({placeholders}) ORDER BY symbol"
+        
         with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT symbol FROM instruments WHERE type = 'ETF'")
+            cursor = conn.execute(query, instrument_types)
             return [row[0] for row in cursor.fetchall()]
     
-    def scan_all_setups(self, max_signals_per_setup: int = 5) -> Dict[SetupType, List[TradeSignal]]:
-        """Scan all setups for signals."""
-        symbols = self.get_all_symbols()
+    def get_etf_symbols(self) -> List[str]:
+        """Get all ETF symbols from database."""
+        return self.get_all_symbols(['ETF', 'ETN'])
+    
+    def get_stock_symbols(self) -> List[str]:
+        """Get all stock symbols from database.""" 
+        return self.get_all_symbols(['Stock'])
+    
+    def scan_all_setups(self, max_signals_per_setup: int = 5, 
+                       instrument_types: Optional[List[str]] = None) -> Dict[SetupType, List[TradeSignal]]:
+        """Scan all setups for signals.
+        
+        Args:
+            max_signals_per_setup: Maximum signals per setup type
+            instrument_types: List of types to include ('ETF', 'Stock', 'ETN'). 
+                            If None, defaults to ETFs only.
+        
+        Returns:
+            Dictionary mapping setup types to lists of trade signals
+        """
+        symbols = self.get_all_symbols(instrument_types)
         all_signals = {}
         
         for setup_type, setup in self.setups.items():
@@ -1894,9 +1984,18 @@ class SetupManager:
         
         return all_signals
     
-    def get_top_signals(self, max_signals: int = 10) -> List[TradeSignal]:
-        """Get top signals across all setups."""
-        all_signals = self.scan_all_setups()
+    def get_top_signals(self, max_signals: int = 10, 
+                       instrument_types: Optional[List[str]] = None) -> List[TradeSignal]:
+        """Get top signals across all setups.
+        
+        Args:
+            max_signals: Maximum number of signals to return
+            instrument_types: List of types to include ('ETF', 'Stock', 'ETN')
+        
+        Returns:
+            List of top trade signals sorted by confidence
+        """
+        all_signals = self.scan_all_setups(instrument_types=instrument_types)
         combined_signals = []
         
         for signals in all_signals.values():
