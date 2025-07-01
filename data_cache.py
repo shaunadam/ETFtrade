@@ -18,9 +18,14 @@ import numpy as np
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Set, Tuple
 import logging
+import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with debug capability
+log_level = logging.DEBUG if os.getenv('ETF_DEBUG') else logging.INFO
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -341,9 +346,11 @@ class DataCache:
                 else:
                     # Smart refresh - check what we need
                     min_date = self._get_min_cached_date(symbol)
+                    logger.debug(f"Smart refresh for {symbol}: min_date = {min_date}")
                     
                     if min_date is None:
                         # No cached data - full bootstrap
+                        logger.debug(f"No cached data for {symbol} - doing full bootstrap")
                         self._fetch_and_cache_data(symbol, "2y")
                     else:
                         # Healing strategy - refresh from safe point
@@ -354,13 +361,17 @@ class DataCache:
                         bleeding_edge = today - timedelta(days=7)
                         
                         refresh_from = max(heal_from, bleeding_edge)
+                        logger.debug(f"Healing strategy for {symbol}: heal_from={heal_from}, bleeding_edge={bleeding_edge}, refresh_from={refresh_from}")
                         
                         if refresh_from < today:
                             # Calculate period needed
                             days_needed = (today - refresh_from).days
                             period = "1y" if days_needed > 365 else "6mo" if days_needed > 180 else "3mo"
+                            logger.debug(f"Refreshing {symbol} from {refresh_from} ({days_needed} days, period={period})")
                             
                             self._fetch_and_cache_data(symbol, period)
+                        else:
+                            logger.debug(f"No refresh needed for {symbol} - data is current")
                 
             except Exception as e:
                 logger.error(f"Error updating {symbol}: {e}")
@@ -381,8 +392,14 @@ class DataCache:
             """, (symbol,))
             
             result = cursor.fetchone()
+            logger.debug(f"Cache check for {symbol}: raw result = {result}")
+            
             if result and result[0]:
-                return datetime.fromisoformat(result[0]).date()
+                min_date = datetime.fromisoformat(result[0]).date()
+                logger.debug(f"Cache hit for {symbol}: min_date = {min_date}")
+                return min_date
+            
+            logger.debug(f"Cache miss for {symbol}: no data found")
             return None
     
     def get_risk_free_rate(self, start_date: datetime, end_date: datetime) -> float:

@@ -71,7 +71,8 @@ python init_database.py --skip-data           # Schema only (manual data loading
 source .venv/bin/activate
 
 # Daily trading workflow
-python screener.py --regime-filter --export-csv          # Find trade candidates
+python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
+python screener.py --update-data --regime-filter         # Update data + find candidates  
 python screener.py --cache-stats                         # Check data cache status
 python screener.py --setup breakout_continuation --min-confidence 0.6  # Specific setup scan
 python screener.py --setup gap_fill_reversal             # Gap reversal opportunities
@@ -120,6 +121,10 @@ pytest tests/ -v                                         # Run all tests
 pytest tests/test_screener.py::test_regime_detection     # Test specific function
 ruff check . && ruff format .                           # Code quality
 mypy . --strict                                         # Type checking
+
+# Debugging & diagnostics
+ETF_DEBUG=1 python screener.py --cache-stats            # Debug cache behavior
+ETF_DEBUG=1 python screener.py --update-data            # Debug data refresh logic
 
 # Database operations
 sqlite3 journal.db ".backup backup_$(date +%Y%m%d).db"  # Manual DB backup

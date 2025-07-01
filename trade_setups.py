@@ -81,32 +81,6 @@ class BaseSetup(ABC):
         """Get market data for analysis."""
         return self.data_cache.get_cached_data(symbol, period)
     
-    def _calculate_rsi(self, prices: pd.Series, window: int = 14) -> pd.Series:
-        """Calculate RSI indicator."""
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
-    
-    def _calculate_atr(self, data: pd.DataFrame, window: int = 14) -> pd.Series:
-        """Calculate Average True Range."""
-        high_low = data['High'] - data['Low']
-        high_close = np.abs(data['High'] - data['Close'].shift())
-        low_close = np.abs(data['Low'] - data['Close'].shift())
-        
-        true_range = np.maximum(high_low, np.maximum(high_close, low_close))
-        return true_range.rolling(window=window).mean()
-    
-    def _calculate_bollinger_bands(self, prices: pd.Series, window: int = 20, num_std: float = 2.0) -> Tuple[pd.Series, pd.Series, pd.Series]:
-        """Calculate Bollinger Bands."""
-        sma = prices.rolling(window=window).mean()
-        std = prices.rolling(window=window).std()
-        
-        upper = sma + (std * num_std)
-        lower = sma - (std * num_std)
-        
-        return upper, lower, sma
     
     def calculate_position_size(self, entry_price: float, stop_loss: float, risk_per_trade: float = 0.02, 
                               account_size: float = 100000) -> float:

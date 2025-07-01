@@ -490,8 +490,8 @@ class BacktestEngine:
                              regime_aware: bool) -> List[TradeSignal]:
         """Get trade signals for a specific date."""
         
-        # Get ETF symbols from cache
-        symbols = self._get_etf_symbols()
+        # Get ETF symbols from setup manager
+        symbols = self.setup_manager.get_all_symbols()
         
         # Get current regime if regime-aware
         current_regime = None
@@ -815,20 +815,6 @@ class BacktestEngine:
         
         return trading_days
     
-    def _get_etf_symbols(self) -> List[str]:
-        """Get list of ETF symbols for backtesting."""
-        # Read from etf_list.csv
-        try:
-            import csv
-            symbols = []
-            with open('etf_list.csv', 'r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    symbols.append(row['Symbol'])
-            return symbols
-        except Exception:
-            # Fallback to hardcoded list
-            return ['SPY', 'QQQ', 'IWM', 'XLF', 'XLK', 'XLE', 'XLV', 'XLI', 'XLU', 'XLP']
     
     def _validate_regime_signal(self, signal: TradeSignal, current_regime: RegimeData) -> bool:
         """Enhanced regime validation for setup appropriateness."""

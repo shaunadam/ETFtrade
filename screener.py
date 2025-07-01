@@ -37,7 +37,8 @@ class ETFScreener:
                    setup_filter: Optional[str] = None,
                    min_confidence: float = 0.5,
                    max_signals: int = 100,
-                   regime_filter: bool = True) -> List[TradeSignal]:
+                   regime_filter: bool = True,
+                   update_data: bool = False) -> List[TradeSignal]:
         """
         Screen ETFs for trade opportunities.
         
@@ -46,14 +47,17 @@ class ETFScreener:
             min_confidence: Minimum confidence threshold
             max_signals: Maximum number of signals to return
             regime_filter: Apply regime-aware filtering
+            update_data: Whether to update market data before screening
             
         Returns:
             List of trade signals
         """
         print("🔍 Screening ETF universe for trade opportunities...")
         
-        # Update market data first (smart refresh)
-        self.data_cache.update_market_data()
+        # Update market data only if requested
+        if update_data:
+            print("🔄 Updating market data...")
+            self.data_cache.update_market_data()
         
         # Get current market regime
         current_regime = self.regime_detector.detect_current_regime()
@@ -275,19 +279,20 @@ Examples:
         screener.show_cache_stats()
         return
     
-    # Update data if requested
-    if args.update_data or args.force_refresh:
-        print("🔄 Updating market data...")
-        screener.data_cache.update_market_data(force_full_refresh=args.force_refresh)
-        print("✅ Market data updated successfully")
-    
-    # Screen for signals
+    # Screen for signals (data update handled within screen_etfs if needed)
     signals = screener.screen_etfs(
         setup_filter=args.setup,
         min_confidence=args.min_confidence,
         max_signals=args.max_signals,
-        regime_filter=args.regime_filter
+        regime_filter=args.regime_filter,
+        update_data=args.update_data or args.force_refresh
     )
+    
+    # Force refresh requires separate handling
+    if args.force_refresh and not args.update_data:
+        print("🔄 Force refreshing market data...")
+        screener.data_cache.update_market_data(force_full_refresh=True)
+        print("✅ Market data force refreshed")
     
     # Display results
     screener.display_signals(signals)
