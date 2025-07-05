@@ -166,9 +166,14 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm" 
+                                                onclick="showChart('{{ result.instrument.symbol }}', '{{ result.setup_name or (result.best_setup.setup_name if result.best_setup else '') }}')" 
+                                                title="View Chart">
+                                            <i class="bi bi-graph-up"></i>
+                                        </button>
                                         <a href="{{ url_for('screener.analyze_symbol', symbol=result.instrument.symbol) }}" 
                                            class="btn btn-outline-light btn-sm" title="Detailed Analysis">
-                                            <i class="bi bi-graph-up"></i>
+                                            <i class="bi bi-list-ul"></i>
                                         </a>
                                         <button class="btn btn-outline-success btn-sm" 
                                                 onclick="createTrade('{{ result.instrument.symbol }}')" title="Create Trade">
@@ -232,14 +237,300 @@
 </div>
 {% endif %}
 
+<!-- Chart Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1" aria-labelledby="chartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title text-light" id="chartModalLabel">
+                    <i class="bi bi-graph-up me-2"></i>
+                    <span id="chartSymbol">Chart</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label text-light">Period:</label>
+                        <select class="form-select form-select-sm" id="chartPeriod" onchange="updateChart()">
+                            <option value="30">30 Days</option>
+                            <option value="90" selected>90 Days</option>
+                            <option value="180">180 Days</option>
+                            <option value="365">1 Year</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-light">Setup:</label>
+                        <input type="text" class="form-control form-control-sm" id="chartSetup" readonly>
+                    </div>
+                </div>
+                <div id="chartContainer" style="height: 500px;">
+                    <div class="d-flex justify-content-center align-items-center h-100">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading chart...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="downloadChart()">
+                    <i class="bi bi-download me-2"></i>
+                    Download Chart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function exportResults(format) {
-    window.location.href = '{{ url_for("screener.export_results", format="") }}' + format;
+    // Get current screening parameters
+    const params = new URLSearchParams();
+    
+    {% if results and results.screening_parameters %}
+    {% if results.screening_parameters.setup_name %}
+    params.append('setup', '{{ results.screening_parameters.setup_name }}');
+    {% endif %}
+    {% if results.screening_parameters.instrument_type %}
+    params.append('type', '{{ results.screening_parameters.instrument_type }}');
+    {% endif %}
+    params.append('regime_filter', '{{ results.screening_parameters.regime_filter|lower }}');
+    params.append('min_confidence', '{{ results.screening_parameters.min_confidence }}');
+    {% endif %}
+    
+    const url = '{{ url_for("screener.export_results", format="") }}' + format + '?' + params.toString();
+    window.location.href = url;
 }
 
 function createTrade(symbol) {
     // This would open a modal or redirect to trade creation
     alert('Trade creation for ' + symbol + ' - functionality coming soon!');
+}
+
+// Chart functionality
+let currentChartSymbol = null;
+let currentChartSetup = null;
+
+function showChart(symbol, setup) {
+    currentChartSymbol = symbol;
+    currentChartSetup = setup;
+    
+    // Update modal title and setup field
+    document.getElementById('chartSymbol').textContent = symbol;
+    document.getElementById('chartSetup').value = setup || 'General Analysis';
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('chartModal'));
+    modal.show();
+    
+    // Load chart data
+    loadChartData();
+}
+
+async function loadChartData() {
+    if (!currentChartSymbol) return;
+    
+    try {
+        // Show loading spinner
+        const container = document.getElementById('chartContainer');
+        container.innerHTML = `
+            <div class="d-flex justify-content-center align-items-center h-100">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading chart...</span>
+                </div>
+            </div>
+        `;
+        
+        const period = document.getElementById('chartPeriod').value;
+        let url = `/screener/api/chart/${currentChartSymbol}?period=${period}`;
+        
+        if (currentChartSetup) {
+            url += `&setup=${encodeURIComponent(currentChartSetup)}`;
+        }
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        if (result.success) {
+            await createPriceChart(result.data);
+        } else {
+            showChartError(result.error || 'Failed to load chart data');
+        }
+        
+    } catch (error) {
+        console.error('Error loading chart data:', error);
+        showChartError('Network error loading chart data');
+    }
+}
+
+async function createPriceChart(data) {
+    try {
+        // Get chart configuration
+        const configResponse = await fetch(`/screener/api/chart-config/price?symbol=${currentChartSymbol}`);
+        const configResult = await configResponse.json();
+        
+        if (!configResult.success) {
+            throw new Error('Failed to get chart configuration');
+        }
+        
+        const { config, layout } = configResult.data;
+        
+        // Prepare candlestick data
+        const candlestickTrace = {
+            x: data.price_data.dates,
+            open: data.price_data.open,
+            high: data.price_data.high,
+            low: data.price_data.low,
+            close: data.price_data.close,
+            type: 'candlestick',
+            name: currentChartSymbol,
+            yaxis: 'y',
+            showlegend: false
+        };
+        
+        const traces = [candlestickTrace];
+        
+        // Add technical indicators
+        if (data.indicators) {
+            const colors = {
+                'SMA_20': '#17a2b8',
+                'SMA_50': '#28a745', 
+                'SMA_200': '#dc3545',
+                'EMA_13': '#ffc107',
+                'BB_UPPER': '#6c757d',
+                'BB_LOWER': '#6c757d'
+            };
+            
+            Object.entries(data.indicators).forEach(([indicator, values]) => {
+                traces.push({
+                    x: values.dates,
+                    y: values.values,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: indicator.replace('_', ' '),
+                    line: {
+                        color: colors[indicator] || '#6c757d',
+                        width: 1
+                    },
+                    yaxis: 'y'
+                });
+            });
+        }
+        
+        // Add volume trace
+        if (data.volume_data) {
+            traces.push({
+                x: data.volume_data.dates,
+                y: data.volume_data.volume,
+                type: 'bar',
+                name: 'Volume',
+                yaxis: 'y2',
+                marker: {
+                    color: 'rgba(128,128,128,0.3)'
+                }
+            });
+            
+            // Update layout for volume subplot
+            layout.yaxis2 = {
+                title: 'Volume',
+                side: 'right',
+                overlaying: 'y',
+                showgrid: false,
+                zeroline: false
+            };
+        }
+        
+        // Add setup signals if available
+        if (data.setup_signals) {
+            const signals = data.setup_signals;
+            
+            if (signals.entry_price) {
+                traces.push({
+                    x: [data.price_data.dates[data.price_data.dates.length - 1]],
+                    y: [signals.entry_price],
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'Entry',
+                    marker: {
+                        color: '#28a745',
+                        size: 12,
+                        symbol: 'triangle-up'
+                    }
+                });
+            }
+            
+            if (signals.target_price) {
+                traces.push({
+                    x: [data.price_data.dates[data.price_data.dates.length - 1]],
+                    y: [signals.target_price],
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'Target',
+                    marker: {
+                        color: '#17a2b8',
+                        size: 12,
+                        symbol: 'triangle-up'
+                    }
+                });
+            }
+            
+            if (signals.stop_loss) {
+                traces.push({
+                    x: [data.price_data.dates[data.price_data.dates.length - 1]],
+                    y: [signals.stop_loss],
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'Stop Loss',
+                    marker: {
+                        color: '#dc3545',
+                        size: 12,
+                        symbol: 'triangle-down'
+                    }
+                });
+            }
+        }
+        
+        // Create the chart
+        Plotly.newPlot('chartContainer', traces, layout, config);
+        
+    } catch (error) {
+        console.error('Error creating chart:', error);
+        showChartError('Failed to create chart visualization');
+    }
+}
+
+function showChartError(message) {
+    const container = document.getElementById('chartContainer');
+    container.innerHTML = `
+        <div class="d-flex justify-content-center align-items-center h-100 text-center">
+            <div>
+                <i class="bi bi-exclamation-triangle text-warning display-4"></i>
+                <div class="mt-3 text-light">${message}</div>
+                <button class="btn btn-outline-primary mt-3" onclick="loadChartData()">
+                    <i class="bi bi-arrow-clockwise me-2"></i>
+                    Retry
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function updateChart() {
+    if (currentChartSymbol) {
+        loadChartData();
+    }
+}
+
+function downloadChart() {
+    if (document.getElementById('chartContainer').querySelector('.plotly-graph-div')) {
+        Plotly.downloadImage('chartContainer', {
+            format: 'png',
+            filename: `${currentChartSymbol}_chart`,
+            width: 1200,
+            height: 800
+        });
+    }
 }
 
 // Sort table functionality

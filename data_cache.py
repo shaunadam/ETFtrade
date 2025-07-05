@@ -629,7 +629,7 @@ class DataCache:
 
 if __name__ == "__main__":
     # Test the data cache
-    cache = DataCache()
+    cache = DataCache("journal.db")
     
     print("📊 Data Cache Test")
     print("=================")

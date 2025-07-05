@@ -401,6 +401,224 @@ window.addEventListener('beforeunload', function() {
     console.log('🧹 Cleaned up intervals and resources');
 });
 
+/**
+ * Progress tracking functionality
+ */
+class ProgressTracker {
+    constructor() {
+        this.currentOperation = null;
+        this.steps = [];
+        this.modal = null;
+    }
+    
+    /**
+     * Start a new operation with progress tracking
+     */
+    startOperation(operationName, steps) {
+        this.currentOperation = operationName;
+        this.steps = steps.map((step, index) => ({
+            id: index,
+            title: step.title,
+            description: step.description,
+            status: 'pending', // pending, active, completed, error
+            startTime: null,
+            endTime: null
+        }));
+        
+        this.showProgressModal();
+        this.updateDisplay();
+    }
+    
+    /**
+     * Update step status
+     */
+    updateStep(stepIndex, status, message = null) {
+        if (stepIndex >= 0 && stepIndex < this.steps.length) {
+            const step = this.steps[stepIndex];
+            
+            if (status === 'active' && step.status !== 'active') {
+                step.startTime = new Date();
+            }
+            
+            if ((status === 'completed' || status === 'error') && step.status === 'active') {
+                step.endTime = new Date();
+            }
+            
+            step.status = status;
+            if (message) {
+                step.description = message;
+            }
+            
+            this.updateDisplay();
+        }
+    }
+    
+    /**
+     * Complete the operation
+     */
+    completeOperation(success = true, message = null) {
+        if (success) {
+            // Mark all remaining steps as completed
+            this.steps.forEach(step => {
+                if (step.status === 'pending' || step.status === 'active') {
+                    step.status = 'completed';
+                    step.endTime = new Date();
+                }
+            });
+        }
+        
+        this.updateDisplay();
+        
+        // Auto-close after delay if successful
+        if (success) {
+            setTimeout(() => {
+                this.hideProgressModal();
+            }, 2000);
+        }
+    }
+    
+    /**
+     * Show progress modal
+     */
+    showProgressModal() {
+        if (!this.modal) {
+            this.createProgressModal();
+        }
+        
+        this.modal.show();
+    }
+    
+    /**
+     * Hide progress modal
+     */
+    hideProgressModal() {
+        if (this.modal) {
+            this.modal.hide();
+        }
+    }
+    
+    /**
+     * Create progress modal DOM
+     */
+    createProgressModal() {
+        const modalHtml = `
+            <div class="modal fade operation-progress-modal" id="progressModal" tabindex="-1" data-bs-backdrop="static">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title text-light">
+                                <i class="bi bi-gear me-2"></i>
+                                <span id="operationTitle">Processing...</span>
+                            </h5>
+                        </div>
+                        <div class="modal-body">
+                            <div id="progressSteps"></div>
+                            <div class="mt-3">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-animated" id="overallProgress" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text" id="progressText">0%</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal" style="display: none;" id="closeProgressBtn">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        this.modal = new bootstrap.Modal(document.getElementById('progressModal'));
+    }
+    
+    /**
+     * Update progress display
+     */
+    updateDisplay() {
+        if (!this.modal) return;
+        
+        // Update operation title
+        document.getElementById('operationTitle').textContent = this.currentOperation;
+        
+        // Update steps
+        const stepsContainer = document.getElementById('progressSteps');
+        stepsContainer.innerHTML = this.steps.map(step => {
+            const icon = this.getStepIcon(step.status);
+            const timing = this.getStepTiming(step);
+            
+            return `
+                <div class="operation-step ${step.status}">
+                    <div class="step-icon">
+                        <i class="bi ${icon}"></i>
+                    </div>
+                    <div class="step-content">
+                        <div class="step-title">${step.title}</div>
+                        <div class="step-description">${step.description}</div>
+                    </div>
+                    <div class="step-timing">${timing}</div>
+                </div>
+            `;
+        }).join('');
+        
+        // Update overall progress
+        const completedSteps = this.steps.filter(s => s.status === 'completed').length;
+        const totalSteps = this.steps.length;
+        const progressPercent = Math.round((completedSteps / totalSteps) * 100);
+        
+        const progressBar = document.getElementById('overallProgress');
+        const progressText = document.getElementById('progressText');
+        
+        if (progressBar && progressText) {
+            progressBar.style.width = `${progressPercent}%`;
+            progressText.textContent = `${progressPercent}%`;
+        }
+        
+        // Show close button if all steps completed or any error
+        const hasError = this.steps.some(s => s.status === 'error');
+        const allCompleted = this.steps.every(s => s.status === 'completed');
+        
+        if (hasError || allCompleted) {
+            const closeBtn = document.getElementById('closeProgressBtn');
+            if (closeBtn) {
+                closeBtn.style.display = 'block';
+            }
+        }
+    }
+    
+    /**
+     * Get icon for step status
+     */
+    getStepIcon(status) {
+        switch (status) {
+            case 'pending': return 'bi-circle';
+            case 'active': return 'bi-arrow-clockwise';
+            case 'completed': return 'bi-check-circle';
+            case 'error': return 'bi-x-circle';
+            default: return 'bi-circle';
+        }
+    }
+    
+    /**
+     * Get timing display for step
+     */
+    getStepTiming(step) {
+        if (step.startTime && step.endTime) {
+            const duration = step.endTime - step.startTime;
+            return `${Math.round(duration / 1000)}s`;
+        } else if (step.startTime) {
+            const duration = new Date() - step.startTime;
+            return `${Math.round(duration / 1000)}s`;
+        }
+        return '';
+    }
+}
+
+// Create global progress tracker instance
+window.TradingApp.progressTracker = new ProgressTracker();
+
 // Export functions for global use
 window.TradingApp.utils = {
     createChart,
@@ -411,5 +629,6 @@ window.TradingApp.utils = {
     formatCurrency,
     formatPercentage,
     formatLargeNumber,
-    apiCall
+    apiCall,
+    ProgressTracker
 };

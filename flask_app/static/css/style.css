@@ -359,3 +359,121 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: #495057;
 }
+
+/* Enhanced Progress bar styles */
+.progress-container {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 0.375rem;
+    margin: 1rem 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-animated {
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+}
+
+.progress-status {
+    font-size: 0.875rem;
+    color: #adb5bd;
+    margin-top: 0.25rem;
+}
+
+/* Operation progress modal */
+.operation-progress-modal .modal-content {
+    background-color: var(--card-bg);
+    border: 1px solid #495057;
+}
+
+.operation-progress-modal .modal-header {
+    border-bottom: 1px solid #495057;
+}
+
+.operation-progress-modal .modal-body {
+    padding: 2rem;
+}
+
+.operation-step {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.operation-step.active {
+    background-color: rgba(13, 110, 253, 0.1);
+    border-left: 3px solid var(--trading-blue);
+}
+
+.operation-step.completed {
+    background-color: rgba(0, 212, 170, 0.1);
+    border-left: 3px solid var(--trading-green);
+}
+
+.operation-step.error {
+    background-color: rgba(255, 107, 107, 0.1);
+    border-left: 3px solid var(--trading-red);
+}
+
+.step-icon {
+    margin-right: 0.75rem;
+    font-size: 1.2rem;
+    min-width: 24px;
+    text-align: center;
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-title {
+    font-weight: 500;
+    color: white;
+    margin-bottom: 0.25rem;
+}
+
+.step-description {
+    font-size: 0.875rem;
+    color: #adb5bd;
+    margin: 0;
+}
+
+.step-timing {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-left: auto;
+}
+
+/* Pulse animation for active steps */
+@keyframes pulse-step {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.operation-step.active .step-icon {
+    animation: pulse-step 2s infinite;
+    color: var(--trading-blue);
+}
+
+.operation-step.completed .step-icon {
+    color: var(--trading-green);
+}
+
+.operation-step.error .step-icon {
+    color: var(--trading-red);
+}

@@ -73,7 +73,7 @@
                     </div>
                     
                     <div class="d-grid">
-                        {{ form.submit(class="btn btn-trading-blue btn-lg") }}
+                        {{ form.submit(class="btn btn-trading-blue btn-lg", onclick="startScreeningWithProgress(event)") }}
                     </div>
                 </form>
             </div>
@@ -192,5 +192,105 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Screening with progress tracking
+function startScreeningWithProgress(event) {
+    event.preventDefault();
+    
+    const form = event.target.closest('form');
+    const formData = new FormData(form);
+    
+    // Define screening steps
+    const steps = [
+        {
+            title: 'Initializing Screening',
+            description: 'Preparing screening parameters and market data'
+        },
+        {
+            title: 'Loading Market Data',
+            description: 'Fetching latest price data and technical indicators'
+        },
+        {
+            title: 'Applying Trade Setups',
+            description: 'Analyzing instruments against selected trade setups'
+        },
+        {
+            title: 'Regime Filtering',
+            description: 'Filtering results based on current market regime'
+        },
+        {
+            title: 'Finalizing Results',
+            description: 'Compiling and formatting screening results'
+        }
+    ];
+    
+    // Start progress tracking
+    const progressTracker = window.TradingApp.progressTracker;
+    progressTracker.startOperation('ETF/Stock Screening', steps);
+    
+    // Simulate progress updates and run actual screening
+    runScreeningWithProgress(formData, progressTracker);
+}
+
+async function runScreeningWithProgress(formData, progressTracker) {
+    try {
+        // Step 1: Initialize
+        progressTracker.updateStep(0, 'active');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        progressTracker.updateStep(0, 'completed');
+        
+        // Step 2: Load data
+        progressTracker.updateStep(1, 'active');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        progressTracker.updateStep(1, 'completed');
+        
+        // Step 3: Apply setups
+        progressTracker.updateStep(2, 'active');
+        
+        // Make the actual API call
+        const response = await fetch('/screener/api/scan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                setup_name: formData.get('setup_name') || null,
+                instrument_type: formData.get('instrument_type') || null,
+                regime_filter: formData.get('regime_filter') === 'y',
+                min_confidence: parseFloat(formData.get('min_confidence')) || 0.5
+            })
+        });
+        
+        progressTracker.updateStep(2, 'completed');
+        
+        // Step 4: Regime filtering
+        progressTracker.updateStep(3, 'active');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        progressTracker.updateStep(3, 'completed');
+        
+        // Step 5: Finalize
+        progressTracker.updateStep(4, 'active');
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            progressTracker.updateStep(4, 'completed');
+            progressTracker.completeOperation(true);
+            
+            // Redirect to results page with cached results
+            setTimeout(() => {
+                // Use the API results directly by redirecting to results page
+                // The API call already ran the screening and stored results in session
+                window.location.href = '/screener/results';
+            }, 100);
+        } else {
+            progressTracker.updateStep(4, 'error', result.error || 'Screening failed');
+        }
+        
+    } catch (error) {
+        console.error('Screening error:', error);
+        progressTracker.updateStep(progressTracker.steps.findIndex(s => s.status === 'active'), 'error', 'Network error occurred');
+    }
+}
 </script>
 {% endblock %}

@@ -353,7 +353,7 @@ def bootstrap_market_data(cursor, bootstrap_level="core"):
     """Bootstrap market data for ETFs and stocks."""
     from data_cache import DataCache
     
-    cache = DataCache()
+    cache = DataCache("journal.db")
     
     # Define ETF groups
     core_etfs = ["SPY", "QQQ", "IWM", "XLK", "XLF", "XLU", "XLP", "TLT"]  # Regime detection

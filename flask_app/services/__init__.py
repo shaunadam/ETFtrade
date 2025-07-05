@@ -9,5 +9,6 @@ from .data_service import DataService
 from .regime_service import RegimeService
 from .screener_service import ScreenerService
 from .trade_service import TradeService
+from .chart_service import ChartService
 
-__all__ = ['DataService', 'RegimeService', 'ScreenerService', 'TradeService']
+__all__ = ['DataService', 'RegimeService', 'ScreenerService', 'TradeService', 'ChartService']
