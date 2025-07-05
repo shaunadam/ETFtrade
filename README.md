@@ -116,36 +116,93 @@ ETFtrade/
 
 ## 📊 Usage Examples
 
-### Basic Screening
+### Environment Setup
 ```bash
-# Screen all setups with regime filtering
-python screener.py --regime-filter --export-csv
+# IMPORTANT: Always activate virtual environment when starting work
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Focus on specific setups
+# Initialize database with market data (first time only)
+python init_database.py --bootstrap core      # Essential ETFs for regime detection (recommended)
+python init_database.py --bootstrap priority  # Core + high-priority trading ETFs
+python init_database.py --bootstrap all       # All ETFs (slower, comprehensive)
+```
+
+### Flask Web Application
+```bash
+# Start Flask development server
+cd flask_app && python app.py                            # http://localhost:5000
+cd flask_app && FLASK_ENV=production python app.py       # Production mode
+cd flask_app && python -c "from app import create_app; create_app().run(debug=True, port=5001)"  # Custom port
+
+# Web Interface Features:
+# - Dashboard: System status monitoring and overview
+# - Screener: Full web interface for ETF/stock screening with regime detection
+# - Regime: Real-time market regime analysis with historical charts
+# - Data: Cache management, data updates, and universe maintenance
+# - Backtest: Web-based backtesting with walk-forward analysis
+```
+
+### Daily Trading Workflow (CLI)
+```bash
+# Basic screening
+python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
+python screener.py --update-data --regime-filter         # Update data + find candidates
+python screener.py --cache-stats                         # Check data cache status
+
+# Specific setup screening
 python screener.py --setup breakout_continuation --min-confidence 0.6
 python screener.py --setup gap_fill_reversal
 python screener.py --setup relative_strength_momentum
 python screener.py --setup volatility_contraction
+python screener.py --setup dividend_distribution_play
+python screener.py --setup elder_triple_screen
+python screener.py --setup institutional_volume_climax
+python screener.py --setup failed_breakdown_reversal
+python screener.py --setup earnings_expectation_reset
+python screener.py --setup elder_force_impulse
 
-# Export results to JSON
+# Export results
 python screener.py --regime-filter --export-json
 ```
 
 ### Data Management
 ```bash
-# Check cache status
-python screener.py --cache-stats
+# Smart data refresh (recommended)
+python screener.py --update-data                         # Smart refresh market data
+python screener.py --cache-stats                         # View cache statistics
+python screener.py --force-refresh                       # Force full data refresh
 
-# Update data for specific symbols
-python data_cache.py  # Runs cache test
+# Cache functionality
+python data_cache.py                                     # Test cache functionality
+python regime_detection.py                               # Update regime detection
+```
 
-# View regime detection
-python regime_detection.py
+### Trading & Analysis (Future)
+```bash
+# Trade management (when journal.py is complete)
+python journal.py --add-trade SYMBOL --setup trend_pullback --risk 0.02
+python journal.py --update-trade ID --exit-price 45.50 --notes "target hit"
+python journal.py --open-trades --correlations           # Check current positions
+
+# Weekly workflow
+python report.py --weekly --vs-benchmarks                # Full performance review
+python journal.py --weekly-review --regime-analysis      # Trade analysis by regime
+
+# Backtesting & optimization
+python backtest.py --setup trend_pullback --walk-forward # Test single setup
+python backtest.py --all-setups --regime-aware           # Test all strategies
+python backtest.py --optimize --start-date 2020-01-01    # Parameter optimization
+
+# Analysis & reports
+python report.py --regime-performance --since 2023-01-01 # Performance by regime
+python report.py --setup-analysis --export-charts        # Setup effectiveness
+python analysis/treasury_analysis.py                     # Treasury analysis tools
+jupyter notebook reports/weekly_review.ipynb             # Interactive analysis
 ```
 
 ## 🛠️ Development
 
-### Code Quality
+### Code Quality & Testing
 ```bash
 # Linting and formatting
 ruff check . && ruff format .
@@ -154,7 +211,19 @@ ruff check . && ruff format .
 mypy . --strict
 
 # Run tests
-pytest tests/ -v
+pytest tests/ -v                                         # Run all tests
+pytest tests/test_screener.py::test_regime_detection     # Test specific function
+```
+
+### Debugging & Diagnostics
+```bash
+# Enable debug mode
+ETF_DEBUG=1 python screener.py --cache-stats            # Debug cache behavior
+ETF_DEBUG=1 python screener.py --update-data            # Debug data refresh logic
+
+# Database operations
+sqlite3 journal.db ".backup backup_$(date +%Y%m%d).db"  # Manual DB backup
+sqlite3 journal.db ".schema"                            # View database schema
 ```
 
 ### Database Schema

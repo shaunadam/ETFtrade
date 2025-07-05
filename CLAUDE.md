@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-This is a Python-based ETF and stock swing trading system designed to generate long-term capital growth with controlled drawdowns. The system trades both ETFs (sector-specific, thematic, leveraged) and individual stocks with equal priority, featuring both CLI tools and a Flask web application for comprehensive trading workflow management. Designed for limited time availability with daily monitoring of just 5-10 minutes.
+This is a Python-based ETF and stock swing trading system designed to generate long-term capital growth with controlled drawdowns. The system trades both ETFs and individual stocks with equal priority, featuring both CLI tools and a Flask web application for comprehensive trading workflow management.
 
 **Key Objectives:**
 - Target 20% max drawdown with decades-long time horizon
@@ -12,179 +12,53 @@ This is a Python-based ETF and stock swing trading system designed to generate l
 - Must outperform benchmarks (SPY, sector ETFs)
 - Future-proofed to handle both ETFs and individual stocks
 
-## Project Structure & Components
-
-The system is organized into 5 main phases:
+## Architecture & Components
 
 ### Core Components
-
-#### CLI Tools (Original)
-- **screener.py**: Production CLI for ETF/stock screening with regime-aware filtering and export capabilities
+- **screener.py**: Production CLI for ETF/stock screening with regime-aware filtering
 - **data_cache.py**: Intelligent data caching engine with 95%+ API call reduction
-- **regime_detection.py**: Market regime detection across volatility, trend, sector rotation, and risk sentiment
+- **regime_detection.py**: Market regime detection across 4 dimensions
 - **trade_setups.py**: Core trade setup implementations with regime validation
-- **backtest.py**: Walk-forward backtesting engine with regime analysis  
-- **journal.py**: SQLite-based trade journal with correlation tracking
-- **report.py**: Performance reporting vs benchmarks
-- **etf_list.csv**: Curated list of ~50 high-quality ETFs with tagging
-- **journal.db**: SQLite database for trades, regimes, price data, and technical indicators
-
-#### Flask Web Application (Production Ready)
+- **backtest.py**: Walk-forward backtesting engine with regime analysis
 - **flask_app/**: Complete modular Flask web application with dark Bootstrap 5 theme
-- **app.py**: Main Flask application with blueprint architecture
-- **config.py**: Environment-based configuration with .env support
-- **blueprints/**: 5 complete modules (dashboard, screener, regime, data, backtest)
-- **services/**: Service layer integrating all CLI modules with Flask
-- **templates/**: Professional Jinja2 templates with dark theme and Plotly.js integration
-- **static/**: CSS, JavaScript, and assets for trading-focused web interface
 
-### Database Schema (Future-Proofed)
+### Database Schema
 ```sql
 instruments: id, symbol, name, type (ETF/stock), sector, tags
 price_data: symbol, date, open, high, low, close, volume, updated_at
-indicators: symbol, date, indicator_name, value, updated_at  
+indicators: symbol, date, indicator_name, value, updated_at
 trades: id, instrument_id, setup, entry_date, exit_date, size, entry_price, exit_price, r_planned, r_actual, notes, regime_at_entry
-setups: id, name, description, parameters
-snapshots: id, trade_id, date, price, notes, chart_path
 market_regimes: date, volatility_regime, trend_regime, sector_rotation, risk_on_off, vix_level, spy_vs_sma200, growth_value_ratio, risk_on_off_ratio
 ```
 
-## Technical Stack & Dependencies
+## Technical Stack
 
 **Core Libraries:**
 - `yfinance`: Market data (free tier)
 - `pandas`, `numpy`: Data manipulation
 - `matplotlib`/`plotly`: Visualization
 - `sqlite3`: Database (built-in)
-- `jupyter`: Analysis notebooks
 
 **Web Framework:**
 - `flask`: Web application framework
 - `flask-sqlalchemy`: Database ORM integration
 - `python-dotenv`: Environment configuration
-- `wtforms`: Form handling and validation
 
 **Development Tools:**
 - `pytest`: Testing framework
 - `ruff`: Linting and formatting
 - `mypy`: Type checking
 
-## Common Development Commands
-
-```bash
-# Environment setup (first time)
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Initialize database with market data (REQUIRED for first-time setup)
-python init_database.py --bootstrap core      # Essential ETFs for regime detection (recommended)
-python init_database.py --bootstrap priority  # Core + high-priority trading ETFs
-python init_database.py --bootstrap all       # All ETFs (slower, comprehensive)
-python init_database.py --skip-data           # Schema only (manual data loading required)
-
-# IMPORTANT: Always activate virtual environment when starting work
-# Run this once per session before any Python commands:
-source .venv/bin/activate
-
-# Flask Web Application
-cd flask_app && python app.py                            # Start Flask development server (http://localhost:5000)
-cd flask_app && FLASK_ENV=production python app.py       # Production mode
-cd flask_app && python -c "from app import create_app; create_app().run(debug=True, port=5001)"  # Custom port
-
-# Complete Web Interface (Alternative to CLI)
-# Visit http://localhost:5000 after starting Flask app
-# - Dashboard: System status monitoring and overview
-# - Screener: Full web interface for ETF/stock screening with regime detection
-# - Regime: Real-time market regime analysis with historical charts
-# - Data: Cache management, data updates, and universe maintenance  
-# - Backtest: Web-based backtesting with walk-forward analysis
-# All modules include interactive forms, real-time updates, and API endpoints
-
-# Daily trading workflow (CLI)
-python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
-python screener.py --update-data --regime-filter         # Update data + find candidates  
-python screener.py --cache-stats                         # Check data cache status
-python screener.py --setup breakout_continuation --min-confidence 0.6  # Specific setup scan
-python screener.py --setup gap_fill_reversal             # Gap reversal opportunities
-python screener.py --setup relative_strength_momentum    # Relative strength plays
-python screener.py --setup volatility_contraction        # Low volatility setups
-python screener.py --setup dividend_distribution_play    # Dividend timing plays
-python screener.py --setup elder_triple_screen           # Multi-timeframe trend setups
-python screener.py --setup institutional_volume_climax   # Institutional accumulation setups
-python screener.py --setup failed_breakdown_reversal     # Bear trap reversal setups
-python screener.py --setup earnings_expectation_reset    # Post-earnings technical setups
-python screener.py --setup elder_force_impulse           # Elder's Force Index + Impulse System
-python journal.py --open-trades --correlations           # Check current positions
-python report.py --daily --vs-spy                        # Quick performance check
-
-# Weekly workflow
-python report.py --weekly --vs-benchmarks                # Full performance review
-python journal.py --weekly-review --regime-analysis      # Trade analysis by regime
-
-# Backtesting & optimization
-python backtest.py --setup trend_pullback --walk-forward # Test single setup
-python backtest.py --all-setups --regime-aware           # Test all strategies
-python backtest.py --optimize --start-date 2020-01-01    # Parameter optimization
-
-# Trade management
-python journal.py --add-trade SYMBOL --setup trend_pullback --risk 0.02
-python journal.py --update-trade ID --exit-price 45.50 --notes "target hit"
-python journal.py --calculate-r --all-open               # Update R multiples
-
-# Data management
-python screener.py --update-data                         # Smart refresh market data
-python screener.py --force-refresh                       # Force full data refresh
-python screener.py --cache-stats                         # View cache statistics
-python data_cache.py                                     # Test cache functionality
-python regime_detection.py                               # Update regime detection
-python journal.py --update-correlations                  # Refresh correlation matrix
-python journal.py --backup-db --compress                 # Backup trade data
-
-# Analysis & reports
-python report.py --regime-performance --since 2023-01-01 # Performance by regime
-python report.py --setup-analysis --export-charts        # Setup effectiveness
-python analysis/treasury_analysis.py                     # Treasury analysis tools
-python analysis/treasury_research.py                     # Treasury research tools
-jupyter notebook reports/weekly_review.ipynb             # Interactive analysis
-
-# Development & testing
-pytest tests/ -v                                         # Run all tests
-pytest tests/test_screener.py::test_regime_detection     # Test specific function
-ruff check . && ruff format .                           # Code quality
-mypy . --strict                                         # Type checking
-
-# Debugging & diagnostics
-ETF_DEBUG=1 python screener.py --cache-stats            # Debug cache behavior
-ETF_DEBUG=1 python screener.py --update-data            # Debug data refresh logic
-
-# Database operations
-sqlite3 journal.db ".backup backup_$(date +%Y%m%d).db"  # Manual DB backup
-sqlite3 journal.db ".schema"                            # View database schema
-```
-
 ## Trading Strategy Framework
 
 ### Market Regime Detection
 - **Volatility Regime**: VIX levels (low <20, medium 20-30, high >30)
-- **Trend Regime**: SPY distance from 200-day SMA  
-- **Sector Rotation**: Growth vs Value (QQT/IWM, XLK/XLF ratios)
+- **Trend Regime**: SPY distance from 200-day SMA
+- **Sector Rotation**: Growth vs Value (QQQ/IWM, XLK/XLF ratios)
 - **Risk-On/Risk-Off**: Defensive vs aggressive ETF performance
 
-### Core Trade Setups
-- **Trend Pullback**: Works best in trending regimes
-- **Breakout Continuation**: Avoid in high volatility regimes
-- **Oversold Mean Reversion**: Effective in ranging markets
-- **Regime Rotation**: Sector rotation based on regime changes
-- **Gap Fill Reversal**: Trade ETFs gapping down with reversal signals
-- **Relative Strength Momentum**: Buy ETFs outperforming SPY during weakness
-- **Volatility Contraction**: Trade after ATR compression before expansion
-- **Dividend/Distribution Play**: Technical setups in dividend sectors during stable regimes
-- **Elder's Triple Screen**: Multi-timeframe trend following with precise entry timing
-- **Institutional Volume Climax**: Detect accumulation during retail panic selling
-- **Failed Breakdown Reversal**: Capitalize on bear traps and quick reversals
-- **Earnings Expectation Reset**: Trade technical patterns after earnings uncertainty is removed
-- **Elder Force Impulse**: Dr. Elder's Force Index + Impulse System combining price, volume, trend, and momentum
+### Trade Setups (13 Total)
+Core setups covering momentum, mean reversion, gaps, volatility, dividends, multi-timeframe analysis, institutional behavior, event-driven opportunities, and Elder's advanced indicators.
 
 ### Risk Management Rules
 - Max 2% capital risk per trade
@@ -193,69 +67,45 @@ sqlite3 journal.db ".schema"                            # View database schema
 - R-based exits (2R target, -1R stop)
 - ATR-based trailing stops
 
-## ETF Universe Categories
-
-Stored in etf_list.csv for now.
-
 ## Data Caching System
-
-The system implements intelligent data caching to minimize API calls and improve performance:
 
 ### Key Features
 - **Smart Refresh Strategy**: Always refreshes last 5 trading days
 - **Healing Logic**: Ensures 200+ day buffer for SMA200 calculations
 - **95% API Reduction**: Dramatically reduces yfinance API calls
-- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands, EMA13, Force Index, MACD Line/Histogram)
-- **Graceful Fallback**: Seamless fallback to yfinance when cache misses
-
-### Cache Management
-```bash
-# Check cache status
-python screener.py --cache-stats
-
-# Smart refresh (recommended)
-python screener.py --update-data
-
-# Force full refresh (if needed)
-python screener.py --force-refresh
-
-# Test cache functionality
-python data_cache.py
-```
-
-### Performance Metrics
-- **Cache Size**: 6,400+ price records, 45,000+ indicator values
-- **Symbols Cached**: 50+ ETFs with full history
-- **Speed Improvement**: Screening in seconds vs minutes
-- **Data Quality**: Healing strategy ensures indicator accuracy
+- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands, EMA13, Force Index, MACD)
 
 ## Development Phases
 
-1. **Phase 1**: Strategy Foundation ✅ (ETF universe, regime detection, trade setups, data caching)
-2. **Phase 2**: Screener + Backtest Engine ✅ (CLI screener complete, backtest engine complete)
-3. **Phase 3**: Flask Web Application ✅ (All 5 modules complete with full CLI integration)
-4. **Phase 4**: Trade Journal Integration (CLI + web interface expansion)
-5. **Phase 5**: Reporting Tools (performance vs benchmarks, automated reports)
-6. **Phase 6**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
-
-**Progress Tracking**: See [PROGRESS.md](PROGRESS.md) for detailed development status and completed tasks.
+1. **Phase 1**: Strategy Foundation ✅
+2. **Phase 2**: Screener + Backtest Engine ✅
+3. **Phase 3**: Flask Web Application ✅
+4. **Phase 4**: Trade Journal Integration (In Progress)
+5. **Phase 5**: Reporting Tools
+6. **Phase 6**: Optimization & Expansion
 
 ## Success Metrics
 - Beat SPY by 2%+ annually after costs
 - Stay within 20% maximum drawdown
 - Positive performance across market regimes
 - <30 minutes daily maintenance
-- Stable walk-forward parameters
-
-## Future Enhancements (Post Phase 5)
-
-### Dynamic Production Parameter Optimization
-- **Adaptive Screening**: Monthly/quarterly parameter optimization for live screening
-- **Risk Controls**: Statistical significance requirements and overfitting prevention
-- **Regime-Aware Adaptation**: Parameter updates based on current market regime
-- **Live Walk-Forward**: Continuous optimization using rolling historical performance
-- **Portfolio-Level Optimization**: Holistic parameter tuning across all setups and positions
 
 ## Development Preferences
 - **Commit Messages**: Keep simple, 1 sentence, no "Generated with Claude Code" footers
 - **Code Style**: Follow existing patterns, minimal comments unless needed
+- **File Creation**: NEVER create files unless absolutely necessary - always prefer editing existing files
+- **Documentation**: NEVER proactively create documentation files unless explicitly requested
+- This is always a feature branch - no backwards compatibility needed
+- When in doubt, we choose clarity over cleverness
+- Avoid complex abstractions or "clever" code. The simple, obvious solution is probably better, and my guidance helps you stay focused on what matters.
+
+## Problem-Solving Together
+When you're stuck or confused:
+
+- Stop - Don't spiral into complex solutions
+- Delegate - Consider spawning agents for parallel investigation
+- Ultrathink - For complex problems, say "I need to ultrathink through this challenge" to engage deeper reasoning
+- Step back - Re-read the requirements
+- Simplify - The simple solution is usually correct
+- Ask - "I see two approaches: [A] vs [B]. Which do you prefer?"
+- **My insights on better approaches are valued - please ask for them!**
