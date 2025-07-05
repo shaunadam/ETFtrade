@@ -14,6 +14,7 @@ mypy>=1.5.0
 # Flask Web Framework
 flask>=2.3.0
 flask-sqlalchemy>=3.0.0
+flask-wtf>=1.1.0
 python-dotenv>=1.0.0
 wtforms>=3.0.0
 

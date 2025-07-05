@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}{{ symbol }} Analysis - ETF/Stock Trading System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-light">
+            <i class="bi bi-graph-up text-trading-blue"></i>
+            {{ symbol }} Analysis
+        </h1>
+        <div>
+            <a href="{{ url_for('screener.index') }}" class="btn btn-outline-light me-2">
+                <i class="bi bi-search me-2"></i>
+                New Search
+            </a>
+            <button onclick="history.back()" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-2"></i>
+                Back
+            </button>
+        </div>
+    </div>
+</div>
+
+{% if analysis and 'error' not in analysis %}
+<!-- Instrument Info -->
+{% if analysis.instrument %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h3 class="text-light mb-1">
+                            {{ analysis.instrument.symbol }}
+                            <span class="badge {% if analysis.instrument.type == 'ETF' %}bg-trading-blue{% else %}bg-trading-green{% endif %} ms-2">
+                                {{ analysis.instrument.type }}
+                            </span>
+                        </h3>
+                        <p class="text-muted mb-2">{{ analysis.instrument.name }}</p>
+                        {% if analysis.instrument.sector %}
+                        <p class="small text-muted mb-0">
+                            <i class="bi bi-tag me-1"></i>
+                            {{ analysis.instrument.sector }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div class="text-muted small">
+                            Analyzed: {{ analysis.analyzed_at[:19] }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Analysis Results -->
+{% if analysis.analysis %}
+{% set analysis_data = analysis.analysis %}
+
+<!-- Best Setup (if available) -->
+{% if analysis_data.best_setup %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-success">
+            <div class="card-header bg-trading-green">
+                <h5 class="mb-0 text-dark">
+                    <i class="bi bi-star-fill me-2"></i>
+                    Best Setup: {{ analysis_data.best_setup.setup_display_name or analysis_data.best_setup.setup_name|replace('_', ' ')|title }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="text-center p-3 border-end">
+                                    <div class="h4 text-trading-green mb-1">{{ "%.1f"|format(analysis_data.best_setup.confidence * 100) }}%</div>
+                                    <small class="text-muted">Confidence</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center p-3">
+                                    {% if analysis_data.best_setup.signal == 'BUY' %}
+                                    <div class="h4 text-trading-green mb-1">{{ analysis_data.best_setup.signal }}</div>
+                                    {% elif analysis_data.best_setup.signal == 'SELL' %}
+                                    <div class="h4 text-trading-red mb-1">{{ analysis_data.best_setup.signal }}</div>
+                                    {% else %}
+                                    <div class="h4 text-secondary mb-1">{{ analysis_data.best_setup.signal }}</div>
+                                    {% endif %}
+                                    <small class="text-muted">Signal</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row">
+                            <div class="col-4">
+                                <div class="text-center p-3 border-end">
+                                    {% if analysis_data.best_setup.entry_price %}
+                                    <div class="h5 text-light mb-1">${{ "%.2f"|format(analysis_data.best_setup.entry_price) }}</div>
+                                    <small class="text-muted">Entry</small>
+                                    {% else %}
+                                    <div class="h5 text-muted mb-1">N/A</div>
+                                    <small class="text-muted">Entry</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-center p-3 border-end">
+                                    {% if analysis_data.best_setup.target_price %}
+                                    <div class="h5 text-trading-green mb-1">${{ "%.2f"|format(analysis_data.best_setup.target_price) }}</div>
+                                    <small class="text-muted">Target</small>
+                                    {% else %}
+                                    <div class="h5 text-muted mb-1">N/A</div>
+                                    <small class="text-muted">Target</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="text-center p-3">
+                                    {% if analysis_data.best_setup.stop_loss %}
+                                    <div class="h5 text-trading-red mb-1">${{ "%.2f"|format(analysis_data.best_setup.stop_loss) }}</div>
+                                    <small class="text-muted">Stop</small>
+                                    {% else %}
+                                    <div class="h5 text-muted mb-1">N/A</div>
+                                    <small class="text-muted">Stop</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if analysis_data.best_setup.notes %}
+                <div class="mt-3 pt-3 border-top">
+                    <h6 class="text-light">Analysis Notes:</h6>
+                    <p class="text-muted mb-0">{{ analysis_data.best_setup.notes }}</p>
+                </div>
+                {% endif %}
+                
+                <div class="mt-3 pt-3 border-top">
+                    <button class="btn btn-trading-green" onclick="createTrade('{{ symbol }}', '{{ analysis_data.best_setup.setup_name }}')">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Create Trade
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- All Setups Analysis -->
+{% if analysis_data.all_setups %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-list-check me-2"></i>
+                    All Setup Analysis ({{ analysis_data.all_setups|length }} setups)
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Setup</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>Entry</th>
+                                <th>Target</th>
+                                <th>Stop</th>
+                                <th>R/R</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for setup in analysis_data.all_setups %}
+                            <tr class="{% if loop.index0 == 0 %}table-success{% endif %}">
+                                <td>
+                                    <strong>{{ setup.setup_display_name or setup.setup_name|replace('_', ' ')|title }}</strong>
+                                    {% if loop.index0 == 0 %}
+                                    <span class="badge bg-success ms-2">Best</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if setup.signal == 'BUY' %}
+                                    <span class="badge bg-trading-green">{{ setup.signal }}</span>
+                                    {% elif setup.signal == 'SELL' %}
+                                    <span class="badge bg-trading-red">{{ setup.signal }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ setup.signal }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="progress me-2" style="width: 60px; height: 8px;">
+                                            <div class="progress-bar {% if setup.confidence >= 0.8 %}bg-trading-green{% elif setup.confidence >= 0.6 %}bg-trading-yellow{% else %}bg-trading-red{% endif %}" 
+                                                 style="width: {{ (setup.confidence * 100)|round }}%"></div>
+                                        </div>
+                                        <small>{{ "%.1f"|format(setup.confidence * 100) }}%</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if setup.entry_price %}
+                                    ${{ "%.2f"|format(setup.entry_price) }}
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if setup.target_price %}
+                                    <span class="text-trading-green">${{ "%.2f"|format(setup.target_price) }}</span>
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if setup.stop_loss %}
+                                    <span class="text-trading-red">${{ "%.2f"|format(setup.stop_loss) }}</span>
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if setup.entry_price and setup.target_price and setup.stop_loss %}
+                                    {% set reward = setup.target_price - setup.entry_price %}
+                                    {% set risk = setup.entry_price - setup.stop_loss %}
+                                    {% if risk > 0 %}
+                                    {% set rr_ratio = reward / risk %}
+                                    <span class="{% if rr_ratio >= 2 %}text-trading-green{% elif rr_ratio >= 1 %}text-trading-yellow{% else %}text-trading-red{% endif %}">
+                                        {{ "%.1f"|format(rr_ratio) }}:1
+                                    </span>
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if setup.notes %}
+                                    <small class="text-muted">{{ setup.notes[:50] }}{% if setup.notes|length > 50 %}...{% endif %}</small>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+<!-- Chart Placeholder -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Price Chart & Technical Analysis
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center py-5">
+                    <i class="bi bi-graph-up display-1 text-muted mb-3"></i>
+                    <h5 class="text-light">Interactive Chart Coming Soon</h5>
+                    <p class="text-muted">
+                        Price chart with technical indicators and trade setup visualization will be available here.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Error Display -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Analysis Error:</strong>
+            {{ analysis.error if analysis and analysis.error else 'Unable to analyze symbol' }}
+        </div>
+        <div class="text-center">
+            <a href="{{ url_for('screener.index') }}" class="btn btn-trading-blue">
+                <i class="bi bi-arrow-left me-2"></i>
+                Back to Screener
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function createTrade(symbol, setupName) {
+    // This would integrate with the trade journal blueprint
+    alert('Creating trade for ' + symbol + ' with setup: ' + (setupName || 'best setup') + '\n\nTrade creation functionality coming soon!');
+}
+</script>
+{% endblock %}

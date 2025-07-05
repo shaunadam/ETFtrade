@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Screening Results - ETF/Stock Trading System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-light">
+            <i class="bi bi-search text-trading-blue"></i>
+            Screening Results
+        </h1>
+        <a href="{{ url_for('screener.index') }}" class="btn btn-outline-light">
+            <i class="bi bi-arrow-left me-2"></i>
+            New Search
+        </a>
+    </div>
+</div>
+
+<!-- Results Summary -->
+{% if results and 'error' not in results %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-success d-flex align-items-center">
+            <i class="bi bi-check-circle me-2"></i>
+            <div>
+                <strong>Screening Completed:</strong>
+                Found {{ results.total_matches }} matches from {{ results.total_screened }} instruments screened
+                {% if results.screening_parameters.setup_name %}
+                using <strong>{{ results.screening_parameters.setup_name|replace('_', ' ')|title }}</strong> setup
+                {% endif %}
+                (min confidence: {{ results.screening_parameters.min_confidence }})
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Options -->
+{% if results.results %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="d-flex justify-content-end gap-2">
+            <button class="btn btn-outline-light btn-sm" onclick="exportResults('csv')">
+                <i class="bi bi-file-earmark-csv me-1"></i>
+                Export CSV
+            </button>
+            <button class="btn btn-outline-light btn-sm" onclick="exportResults('json')">
+                <i class="bi bi-file-earmark-code me-1"></i>
+                Export JSON
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Results Table -->
+{% if results.results %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-table me-2"></i>
+                    Trade Opportunities ({{ results.results|length }})
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Setup</th>
+                                <th>Signal</th>
+                                <th>Confidence</th>
+                                <th>Entry</th>
+                                <th>Target</th>
+                                <th>Stop</th>
+                                <th>R/R</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results.results %}
+                            <tr>
+                                <td>
+                                    <strong class="text-trading-blue">{{ result.instrument.symbol }}</strong>
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ result.instrument.name[:30] }}{% if result.instrument.name|length > 30 %}...{% endif %}</small>
+                                </td>
+                                <td>
+                                    <span class="badge {% if result.instrument.type == 'ETF' %}bg-trading-blue{% else %}bg-trading-green{% endif %}">
+                                        {{ result.instrument.type }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if result.setup_name %}
+                                    <small>{{ result.setup_display_name or result.setup_name|replace('_', ' ')|title }}</small>
+                                    {% elif result.best_setup %}
+                                    <small>{{ result.best_setup.setup_display_name or result.best_setup.setup_name|replace('_', ' ')|title }}</small>
+                                    {% else %}
+                                    <small class="text-muted">Multiple</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set signal = result.signal or (result.best_setup.signal if result.best_setup else 'N/A') %}
+                                    {% if signal == 'BUY' %}
+                                    <span class="badge bg-trading-green">{{ signal }}</span>
+                                    {% elif signal == 'SELL' %}
+                                    <span class="badge bg-trading-red">{{ signal }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ signal }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set confidence = result.confidence or 0 %}
+                                    <div class="d-flex align-items-center">
+                                        <div class="progress me-2" style="width: 60px; height: 8px;">
+                                            <div class="progress-bar {% if confidence >= 0.8 %}bg-trading-green{% elif confidence >= 0.6 %}bg-trading-yellow{% else %}bg-trading-red{% endif %}" 
+                                                 style="width: {{ (confidence * 100)|round }}%"></div>
+                                        </div>
+                                        <small>{{ "%.1f"|format(confidence * 100) }}%</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% set entry_price = result.entry_price or (result.best_setup.entry_price if result.best_setup else None) %}
+                                    {% if entry_price %}
+                                    <strong>${{ "%.2f"|format(entry_price) }}</strong>
+                                    {% else %}
+                                    <small class="text-muted">N/A</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set target_price = result.target_price or (result.best_setup.target_price if result.best_setup else None) %}
+                                    {% if target_price %}
+                                    <span class="text-trading-green">${{ "%.2f"|format(target_price) }}</span>
+                                    {% else %}
+                                    <small class="text-muted">N/A</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set stop_loss = result.stop_loss or (result.best_setup.stop_loss if result.best_setup else None) %}
+                                    {% if stop_loss %}
+                                    <span class="text-trading-red">${{ "%.2f"|format(stop_loss) }}</span>
+                                    {% else %}
+                                    <small class="text-muted">N/A</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if entry_price and target_price and stop_loss %}
+                                    {% set reward = target_price - entry_price %}
+                                    {% set risk = entry_price - stop_loss %}
+                                    {% if risk > 0 %}
+                                    {% set rr_ratio = reward / risk %}
+                                    <strong class="{% if rr_ratio >= 2 %}text-trading-green{% elif rr_ratio >= 1 %}text-trading-yellow{% else %}text-trading-red{% endif %}">
+                                        {{ "%.1f"|format(rr_ratio) }}:1
+                                    </strong>
+                                    {% else %}
+                                    <small class="text-muted">N/A</small>
+                                    {% endif %}
+                                    {% else %}
+                                    <small class="text-muted">N/A</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ url_for('screener.analyze_symbol', symbol=result.instrument.symbol) }}" 
+                                           class="btn btn-outline-light btn-sm" title="Detailed Analysis">
+                                            <i class="bi bi-graph-up"></i>
+                                        </a>
+                                        <button class="btn btn-outline-success btn-sm" 
+                                                onclick="createTrade('{{ result.instrument.symbol }}')" title="Create Trade">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-search display-1 text-muted mb-3"></i>
+                <h3 class="text-light">No Results Found</h3>
+                <p class="text-muted mb-4">
+                    No instruments met your screening criteria. Try adjusting your parameters:
+                </p>
+                <ul class="list-unstyled text-start" style="max-width: 400px; margin: 0 auto;">
+                    <li class="mb-2"><i class="bi bi-arrow-right me-2"></i>Lower the minimum confidence threshold</li>
+                    <li class="mb-2"><i class="bi bi-arrow-right me-2"></i>Try different trade setups</li>
+                    <li class="mb-2"><i class="bi bi-arrow-right me-2"></i>Include both ETFs and stocks</li>
+                    <li class="mb-2"><i class="bi bi-arrow-right me-2"></i>Disable regime filtering temporarily</li>
+                </ul>
+                <div class="mt-4">
+                    <a href="{{ url_for('screener.index') }}" class="btn btn-trading-blue">
+                        <i class="bi bi-arrow-left me-2"></i>
+                        Adjust Parameters
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- Error Display -->
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Screening Error:</strong>
+            {{ results.error if results and results.error else 'Unknown error occurred during screening' }}
+        </div>
+        <div class="text-center">
+            <a href="{{ url_for('screener.index') }}" class="btn btn-trading-blue">
+                <i class="bi bi-arrow-left me-2"></i>
+                Back to Screener
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function exportResults(format) {
+    window.location.href = '{{ url_for("screener.export_results", format="") }}' + format;
+}
+
+function createTrade(symbol) {
+    // This would open a modal or redirect to trade creation
+    alert('Trade creation for ' + symbol + ' - functionality coming soon!');
+}
+
+// Sort table functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('table');
+    if (table) {
+        // Add sorting indicators to headers
+        const headers = table.querySelectorAll('th');
+        headers.forEach((header, index) => {
+            if (index < headers.length - 1) { // Don't make actions column sortable
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', () => sortTable(table, index));
+            }
+        });
+    }
+});
+
+function sortTable(table, columnIndex) {
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    rows.sort((a, b) => {
+        const aValue = a.cells[columnIndex].textContent.trim();
+        const bValue = b.cells[columnIndex].textContent.trim();
+        
+        // Try to parse as numbers first
+        const aNum = parseFloat(aValue.replace(/[^0-9.-]/g, ''));
+        const bNum = parseFloat(bValue.replace(/[^0-9.-]/g, ''));
+        
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return bNum - aNum; // Descending for numbers
+        } else {
+            return aValue.localeCompare(bValue); // Ascending for text
+        }
+    });
+    
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}

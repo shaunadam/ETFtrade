@@ -16,12 +16,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 
 # Import existing trading system modules
 try:
-    from regime_detection import detect_current_regime
-    from data_cache import ETFDataCache
+    from regime_detection import RegimeDetector
+    from data_cache import DataCache
+    # Use correct database path - same as Flask config
+    db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'journal.db')
+    regime_detector = RegimeDetector(db_path)
+    data_cache = DataCache(db_path)
 except ImportError as e:
     print(f"Warning: Could not import trading modules: {e}")
-    detect_current_regime = None
-    ETFDataCache = None
+    regime_detector = None
+    data_cache = None
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
@@ -115,26 +119,32 @@ def get_system_status():
 def get_current_regime():
     """Get current market regime information"""
     try:
-        if detect_current_regime is None:
+        if regime_detector is None:
             return {'error': 'Regime detection module not available'}
         
-        regime_data = detect_current_regime()
+        regime_data = regime_detector.detect_current_regime()
         
         # Format regime data for display
-        formatted_regime = {}
-        regime_mapping = {
-            'volatility_regime': {'low': 'Low Vol', 'medium': 'Med Vol', 'high': 'High Vol'},
-            'trend_regime': {'bullish': 'Bullish', 'bearish': 'Bearish', 'sideways': 'Sideways'},
-            'sector_rotation': {'growth': 'Growth', 'value': 'Value', 'balanced': 'Balanced'},
-            'risk_on_off': {'risk_on': 'Risk On', 'risk_off': 'Risk Off', 'neutral': 'Neutral'}
+        formatted_regime = {
+            'volatility_regime': {
+                'value': regime_data.volatility_regime.value,
+                'label': regime_data.volatility_regime.value.replace('_', ' ').title()
+            },
+            'trend_regime': {
+                'value': regime_data.trend_regime.value,
+                'label': regime_data.trend_regime.value.replace('_', ' ').title()
+            },
+            'sector_rotation': {
+                'value': regime_data.sector_rotation.value,
+                'label': regime_data.sector_rotation.value.replace('_', ' ').title()
+            },
+            'risk_on_off': {
+                'value': regime_data.risk_sentiment.value,
+                'label': regime_data.risk_sentiment.value.replace('_', ' ').title()
+            },
+            'vix_level': regime_data.vix_level,
+            'spy_vs_sma200': regime_data.spy_vs_sma200
         }
-        
-        for key, value in regime_data.items():
-            if key in regime_mapping and value in regime_mapping[key]:
-                formatted_regime[key] = {
-                    'value': value,
-                    'label': regime_mapping[key][value]
-                }
         
         return formatted_regime
         
@@ -191,7 +201,7 @@ def get_recent_trades(limit=10):
 def get_cache_statistics():
     """Get data cache statistics"""
     try:
-        if ETFDataCache is None:
+        if data_cache is None:
             return {
                 'total_symbols': 0,
                 'total_records': 0,
@@ -199,14 +209,13 @@ def get_cache_statistics():
                 'cache_hit_rate': 'N/A'
             }
         
-        cache = ETFDataCache()
-        stats = cache.get_cache_statistics()
+        stats = data_cache.get_cache_stats()
         
         return {
-            'total_symbols': stats.get('total_symbols', 0),
-            'total_records': stats.get('total_records', 0),
-            'total_indicators': stats.get('total_indicators', 0),
-            'cache_hit_rate': f"{stats.get('cache_hit_rate', 0):.1f}%"
+            'total_symbols': stats.get('symbols_cached', 0),
+            'total_records': stats.get('price_records', 0),
+            'total_indicators': stats.get('indicator_records', 0),
+            'cache_hit_rate': f"{stats.get('cache_efficiency', 0):.1f}%"
         }
         
     except Exception as e:
@@ -304,12 +313,11 @@ def check_data_freshness(db_path):
 def check_cache_health():
     """Check if data cache is healthy"""
     try:
-        if ETFDataCache is None:
+        if data_cache is None:
             return False
         
-        cache = ETFDataCache()
         # Simple health check - try to get cache stats
-        stats = cache.get_cache_statistics()
-        return stats.get('total_records', 0) > 0
+        stats = data_cache.get_cache_stats()
+        return stats.get('price_records', 0) > 0
     except Exception:
         return False

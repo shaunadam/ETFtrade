@@ -12,50 +12,185 @@
     </div>
 </div>
 
-<div class="row">
+<!-- Current Market Regime Status -->
+{% if current_regime and 'error' not in current_regime %}
+<div class="row mb-4">
     <div class="col-12">
+        <div class="alert alert-info d-flex align-items-center">
+            <i class="bi bi-thermometer-half me-2"></i>
+            <div>
+                <strong>Current Market Regime:</strong>
+                {{ current_regime.volatility_regime }} Volatility, 
+                {{ current_regime.trend_regime }} Trend, 
+                {{ current_regime.risk_on_off }} Risk Sentiment
+                {% if current_regime.vix_level %}
+                (VIX: {{ "%.1f"|format(current_regime.vix_level) }})
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <!-- Screening Form -->
+    <div class="col-lg-4">
         <div class="card">
-            <div class="card-body text-center py-5">
-                <i class="bi bi-funnel-fill display-1 text-trading-blue mb-3"></i>
-                <h3 class="text-light">Advanced Screening Engine</h3>
-                <p class="text-muted mb-4">
-                    Regime-aware screening for ETFs and individual stocks with 13 comprehensive trade setups
-                    and intelligent filtering based on current market conditions.
-                </p>
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-graph-up text-trading-green mb-2"></i>
-                                <h5>Trade Setups</h5>
-                                <p class="small text-muted">13 comprehensive setups covering all market conditions</p>
-                            </div>
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-funnel me-2"></i>
+                    Screening Parameters
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('screener.run_scan') }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        {{ form.setup_name.label(class="form-label") }}
+                        {{ form.setup_name(class="form-select") }}
+                        <div class="form-text">Select specific trade setup or scan all setups</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.instrument_type.label(class="form-label") }}
+                        {{ form.instrument_type(class="form-select") }}
+                        <div class="form-text">Filter by instrument type</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.min_confidence.label(class="form-label") }}
+                        {{ form.min_confidence(class="form-control", step="0.1", min="0", max="1") }}
+                        <div class="form-text">Minimum confidence score (0.0 - 1.0)</div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="form-check">
+                            {{ form.regime_filter(class="form-check-input") }}
+                            {{ form.regime_filter.label(class="form-check-label") }}
+                            <div class="form-text">Filter setups based on current market regime</div>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-thermometer-half text-trading-yellow mb-2"></i>
-                                <h5>Regime Filtering</h5>
-                                <p class="small text-muted">Smart filtering based on current market regime</p>
-                            </div>
-                        </div>
+                    
+                    <div class="d-grid">
+                        {{ form.submit(class="btn btn-trading-blue btn-lg") }}
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-file-earmark-csv text-trading-blue mb-2"></i>
-                                <h5>Export Results</h5>
-                                <p class="small text-muted">Export screening results to CSV and JSON</p>
-                            </div>
-                        </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Data Health Status -->
+        {% if cache_stats and 'error' not in cache_stats %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-database me-2"></i>
+                    Data Status
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6">
+                        <div class="text-trading-blue fw-bold">{{ cache_stats.database.total_instruments }}</div>
+                        <small class="text-muted">Instruments</small>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-trading-green fw-bold">{{ "{:,}".format(cache_stats.database.price_records) }}</div>
+                        <small class="text-muted">Price Records</small>
                     </div>
                 </div>
-                <div class="mt-4">
-                    <span class="badge bg-warning fs-6">Coming Soon</span>
+                {% if cache_stats.database.price_date_range.end %}
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Data through: {{ cache_stats.database.price_date_range.end }}
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Information Panel -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Available Trade Setups
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-trading-blue">Trend Following</h6>
+                        <ul class="list-unstyled ms-3">
+                            <li><i class="bi bi-arrow-right me-2"></i>Trend Pullback</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Breakout Continuation</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Elder Triple Screen</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Elder Force Impulse</li>
+                        </ul>
+                        
+                        <h6 class="text-trading-green">Mean Reversion</h6>
+                        <ul class="list-unstyled ms-3">
+                            <li><i class="bi bi-arrow-right me-2"></i>Oversold Mean Reversion</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Failed Breakdown Reversal</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Gap Fill Reversal</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-trading-yellow">Momentum</h6>
+                        <ul class="list-unstyled ms-3">
+                            <li><i class="bi bi-arrow-right me-2"></i>Relative Strength Momentum</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Institutional Volume Climax</li>
+                        </ul>
+                        
+                        <h6 class="text-trading-red">Volatility</h6>
+                        <ul class="list-unstyled ms-3">
+                            <li><i class="bi bi-arrow-right me-2"></i>Volatility Contraction</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Earnings Expectation Reset</li>
+                        </ul>
+                        
+                        <h6 class="text-trading-purple">Regime-Based</h6>
+                        <ul class="list-unstyled ms-3">
+                            <li><i class="bi bi-arrow-right me-2"></i>Regime Rotation</li>
+                            <li><i class="bi bi-arrow-right me-2"></i>Dividend Distribution Play</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="alert alert-dark mt-3">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>Tip:</strong> Use regime filtering to automatically select setups that work best in current market conditions. 
+                    Higher confidence scores indicate stronger technical signals.
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+// Add real-time form validation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const confidenceInput = document.querySelector('#min_confidence');
+    
+    if (confidenceInput) {
+        confidenceInput.addEventListener('input', function() {
+            const value = parseFloat(this.value);
+            const feedback = this.parentNode.querySelector('.form-text');
+            
+            if (value < 0 || value > 1) {
+                this.classList.add('is-invalid');
+                feedback.textContent = 'Confidence must be between 0.0 and 1.0';
+                feedback.classList.add('text-danger');
+            } else {
+                this.classList.remove('is-invalid');
+                feedback.textContent = 'Minimum confidence score (0.0 - 1.0)';
+                feedback.classList.remove('text-danger');
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

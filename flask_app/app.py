@@ -14,8 +14,8 @@ from flask_sqlalchemy import SQLAlchemy
 # Add parent directory to path to import existing modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Initialize Flask extensions
-db = SQLAlchemy()
+# Import models first so they're available during app initialization
+from models import db
 
 def create_app():
     """Application factory pattern for Flask app creation"""

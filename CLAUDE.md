@@ -91,6 +91,13 @@ cd flask_app && python app.py                            # Start Flask developme
 cd flask_app && FLASK_ENV=production python app.py       # Production mode
 cd flask_app && python -c "from app import create_app; create_app().run(debug=True, port=5001)"  # Custom port
 
+# Web-based screening (alternative to CLI)
+# Visit http://localhost:5000/screener after starting Flask app
+# - Full web interface for ETF/stock screening
+# - Real-time regime detection display
+# - Interactive forms with all CLI setup options
+# - Export capabilities and API endpoints
+
 # Daily trading workflow (CLI)
 python screener.py --regime-filter --export-csv          # Find trade candidates (uses cache)
 python screener.py --update-data --regime-filter         # Update data + find candidates  
@@ -223,7 +230,7 @@ python data_cache.py
 
 1. **Phase 1**: Strategy Foundation ✅ (ETF universe, regime detection, trade setups, data caching)
 2. **Phase 2**: Screener + Backtest Engine ✅ (CLI screener complete, backtest pending)
-3. **Phase 3**: Flask Web Application 🚧 (foundation complete, module development in progress)
+3. **Phase 3**: Flask Web Application 🚧 (foundation complete, screener module complete, 4 modules remaining)
 4. **Phase 4**: Trade Journal Integration (CLI + web interface)
 5. **Phase 5**: Reporting Tools (performance vs benchmarks)
 6. **Phase 6**: Optimization & Expansion (strategy refinement, dynamic parameter optimization)
