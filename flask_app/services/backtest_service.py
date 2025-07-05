@@ -109,11 +109,12 @@ class BacktestService:
                         walk_forward
                     )
                 else:
-                    results = self.backtest_engine.backtest_all_setups(
+                    results = self.backtest_engine.run_backtest(
                         start_date=start_date,
                         end_date=end_date,
-                        optimization_params=optimization_params,
-                        walk_forward=walk_forward
+                        setup_types=None,  # None means all setups
+                        walk_forward=walk_forward,
+                        regime_aware=regime_aware
                     )
             else:
                 setup_type = getattr(SetupType, setup_name.upper(), None)
@@ -134,12 +135,12 @@ class BacktestService:
                         walk_forward
                     )
                 else:
-                    results = self.backtest_engine.backtest_setup(
-                        setup_type=setup_type,
+                    results = self.backtest_engine.run_backtest(
                         start_date=start_date,
                         end_date=end_date,
-                        optimization_params=optimization_params,
-                        walk_forward=walk_forward
+                        setup_types=[setup_type],
+                        walk_forward=walk_forward,
+                        regime_aware=regime_aware
                     )
             
             # Convert results to web-friendly format
@@ -343,11 +344,12 @@ class BacktestService:
             # This is a simplified implementation - in practice you'd need to modify
             # the backtest engine to accept instrument filters
             # For now, run normal backtest and then filter results
-            results = self.backtest_engine.backtest_all_setups(
+            results = self.backtest_engine.run_backtest(
                 start_date=start_date,
                 end_date=end_date,
-                optimization_params=optimization_params,
-                walk_forward=walk_forward
+                setup_types=None,  # None means all setups
+                walk_forward=walk_forward,
+                regime_aware=True
             )
             
             # TODO: Filter results to only include selected instruments
@@ -363,12 +365,12 @@ class BacktestService:
             # This is a simplified implementation - in practice you'd need to modify
             # the backtest engine to accept instrument filters
             # For now, run normal backtest and then filter results
-            results = self.backtest_engine.backtest_setup(
-                setup_type=setup_type,
+            results = self.backtest_engine.run_backtest(
                 start_date=start_date,
                 end_date=end_date,
-                optimization_params=optimization_params,
-                walk_forward=walk_forward
+                setup_types=[setup_type],
+                walk_forward=walk_forward,
+                regime_aware=True
             )
             
             # TODO: Filter results to only include selected instruments
