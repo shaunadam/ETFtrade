@@ -12,50 +12,468 @@
     </div>
 </div>
 
-<div class="row">
+{% if error %}
+<div class="row mb-4">
     <div class="col-12">
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            {{ error }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Backtest Configuration -->
+<div class="row">
+    <div class="col-lg-4">
         <div class="card">
-            <div class="card-body text-center py-5">
-                <i class="bi bi-clock-history display-1 text-trading-blue mb-3"></i>
-                <h3 class="text-light">Advanced Backtesting Engine</h3>
-                <p class="text-muted mb-4">
-                    Walk-forward backtesting with regime analysis, parameter optimization,
-                    and comprehensive performance metrics for strategy validation.
-                </p>
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-arrow-right-circle text-trading-green mb-2"></i>
-                                <h5>Walk-Forward Analysis</h5>
-                                <p class="small text-muted">Time-based validation with rolling optimization</p>
-                            </div>
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear me-2"></i>
+                    Backtest Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="backtestForm">
+                    <!-- Setup Selection -->
+                    <div class="mb-3">
+                        <label class="form-label">Trade Setup</label>
+                        <select class="form-select" id="setupName" name="setup_name">
+                            <option value="all">All Setups</option>
+                            {% if setups %}
+                            {% for setup in setups %}
+                            <option value="{{ setup.name }}">{{ setup.description or setup.name.replace('_', ' ').title() }}</option>
+                            {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    
+                    <!-- Date Range -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate" name="start_date" 
+                                   value="{{ default_params.start_date if default_params else '' }}">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate" name="end_date"
+                                   value="{{ default_params.end_date if default_params else '' }}">
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-thermometer-half text-trading-yellow mb-2"></i>
-                                <h5>Regime Analysis</h5>
-                                <p class="small text-muted">Performance breakdown by market regime</p>
-                            </div>
+                    
+                    <!-- Analysis Options -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="walkForward" name="walk_forward" 
+                                   {% if default_params and default_params.walk_forward %}checked{% endif %}>
+                            <label class="form-check-label" for="walkForward">
+                                Walk-Forward Analysis
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="regimeAware" name="regime_aware"
+                                   {% if default_params and default_params.regime_aware %}checked{% endif %}>
+                            <label class="form-check-label" for="regimeAware">
+                                Regime-Aware Analysis
+                            </label>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-bar-chart text-trading-blue mb-2"></i>
-                                <h5>Performance Metrics</h5>
-                                <p class="small text-muted">Sharpe ratio, drawdown, and benchmark comparison</p>
-                            </div>
-                        </div>
+                    
+                    <!-- Risk Parameters -->
+                    <div class="mb-3">
+                        <label class="form-label">Stop Loss (%)</label>
+                        <input type="number" class="form-control" id="stopLoss" name="stop_loss_pct" 
+                               step="0.01" min="0.01" max="1" 
+                               value="{{ default_params.stop_loss_pct if default_params else '0.05' }}">
                     </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Profit Target (R)</label>
+                        <input type="number" class="form-control" id="profitTarget" name="profit_target_r"
+                               step="0.1" min="0.1" max="10"
+                               value="{{ default_params.profit_target_r if default_params else '2.0' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Confidence Threshold</label>
+                        <input type="number" class="form-control" id="confidenceThreshold" name="confidence_threshold"
+                               step="0.01" min="0" max="1"
+                               value="{{ default_params.confidence_threshold if default_params else '0.6' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Max Holding Days</label>
+                        <input type="number" class="form-control" id="maxHoldingDays" name="max_holding_days"
+                               min="1" max="365"
+                               value="{{ default_params.max_holding_days if default_params else '60' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Position Sizing</label>
+                        <select class="form-select" id="positionSizing" name="position_size_method">
+                            <option value="fixed_risk">Fixed Risk</option>
+                            <option value="equal_weight">Equal Weight</option>
+                            <option value="kelly">Kelly Criterion</option>
+                        </select>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary" id="runBacktestBtn">
+                            <i class="bi bi-play-circle me-2"></i>
+                            Run Backtest
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Progress -->
+                <div id="backtestProgress" class="mt-3" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="progressBar" style="width: 0%"></div>
+                    </div>
+                    <div id="progressStatus" class="small text-muted mt-1">Initializing backtest...</div>
                 </div>
-                <div class="mt-4">
-                    <span class="badge bg-warning fs-6">Coming Soon</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Display -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart me-2"></i>
+                    Backtest Results
+                </h5>
+            </div>
+            <div class="card-body" id="resultsContainer">
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-info-circle display-4 mb-3"></i>
+                    <h5>No Backtest Results</h5>
+                    <p>Configure parameters and run a backtest to see results here.</p>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Performance Metrics -->
+<div class="row mt-4" id="detailedResults" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Detailed Performance Analysis
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="performanceCharts"></div>
+                <div id="tradeHistory" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let backtestInProgress = false;
+
+document.getElementById('backtestForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    runBacktest();
+});
+
+function runBacktest() {
+    if (backtestInProgress) return;
+    
+    backtestInProgress = true;
+    const form = document.getElementById('backtestForm');
+    const formData = new FormData(form);
+    const button = document.getElementById('runBacktestBtn');
+    const progress = document.getElementById('backtestProgress');
+    const progressBar = document.getElementById('progressBar');
+    const status = document.getElementById('progressStatus');
+    
+    // Show progress
+    progress.style.display = 'block';
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-hourglass-split me-2"></i> Running...';
+    
+    // Prepare configuration
+    const config = {
+        setup_name: formData.get('setup_name'),
+        start_date: formData.get('start_date'),
+        end_date: formData.get('end_date'),
+        walk_forward: formData.has('walk_forward'),
+        regime_aware: formData.has('regime_aware'),
+        stop_loss_pct: parseFloat(formData.get('stop_loss_pct')),
+        profit_target_r: parseFloat(formData.get('profit_target_r')),
+        confidence_threshold: parseFloat(formData.get('confidence_threshold')),
+        max_holding_days: parseInt(formData.get('max_holding_days')),
+        position_size_method: formData.get('position_size_method')
+    };
+    
+    // Validate parameters first
+    fetch('/backtest/api/validate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.data.valid) {
+            // Parameters are valid, run backtest
+            progressBar.style.width = '25%';
+            status.textContent = 'Running backtest...';
+            
+            return fetch('/backtest/api/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(config)
+            });
+        } else {
+            throw new Error('Validation failed: ' + data.data.errors.join(', '));
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressBar.style.width = '100%';
+        
+        if (data.success) {
+            status.textContent = 'Backtest completed successfully!';
+            displayResults(data.data);
+        } else {
+            status.textContent = 'Backtest failed: ' + data.error;
+            displayError(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Backtest error:', error);
+        progressBar.style.width = '100%';
+        progressBar.classList.add('bg-danger');
+        status.textContent = 'Error: ' + error.message;
+        displayError(error.message);
+    })
+    .finally(() => {
+        backtestInProgress = false;
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-play-circle me-2"></i> Run Backtest';
+    });
+}
+
+function displayResults(results) {
+    const container = document.getElementById('resultsContainer');
+    
+    if (results.error) {
+        displayError(results.error);
+        return;
+    }
+    
+    // Check if multiple setups or single setup
+    if (results.setups) {
+        displayMultipleSetupResults(results);
+    } else {
+        displaySingleSetupResults(results);
+    }
+    
+    // Show detailed results section
+    document.getElementById('detailedResults').style.display = 'block';
+}
+
+function displaySingleSetupResults(results) {
+    const container = document.getElementById('resultsContainer');
+    
+    container.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-trading-blue">Performance Summary</h6>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-green">${results.total_return || 0}%</div>
+                            <small class="text-muted">Total Return</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-blue">${results.annual_return || 0}%</div>
+                            <small class="text-muted">Annual Return</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-yellow">${results.sharpe_ratio || 'N/A'}</div>
+                            <small class="text-muted">Sharpe Ratio</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-red">${results.max_drawdown || 0}%</div>
+                            <small class="text-muted">Max Drawdown</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-trading-blue">Trade Statistics</h6>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-light">${results.total_trades || 0}</div>
+                            <small class="text-muted">Total Trades</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-green">${results.win_rate || 0}%</div>
+                            <small class="text-muted">Win Rate</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-blue">${results.profit_factor || 'N/A'}</div>
+                            <small class="text-muted">Profit Factor</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="metric-card text-center mb-2">
+                            <div class="h4 text-trading-yellow">${results.avg_r_multiple || 'N/A'}R</div>
+                            <small class="text-muted">Avg R Multiple</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        ${results.trades && results.trades.length > 0 ? `
+        <div class="mt-4">
+            <h6 class="text-trading-blue">Recent Trades</h6>
+            <div class="table-responsive">
+                <table class="table table-dark table-sm">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Entry Date</th>
+                            <th>Exit Date</th>
+                            <th>R Multiple</th>
+                            <th>P&L</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${results.trades.slice(0, 10).map(trade => `
+                        <tr>
+                            <td><strong>${trade.symbol}</strong></td>
+                            <td>${trade.entry_date}</td>
+                            <td>${trade.exit_date || 'Open'}</td>
+                            <td class="${trade.r_multiple > 0 ? 'text-trading-green' : 'text-trading-red'}">
+                                ${trade.r_multiple || 'N/A'}
+                            </td>
+                            <td class="${trade.pnl > 0 ? 'text-trading-green' : 'text-trading-red'}">
+                                ${trade.pnl ? '$' + trade.pnl.toLocaleString() : 'N/A'}
+                            </td>
+                            <td><span class="badge bg-secondary">${trade.status || 'Unknown'}</span></td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        ` : ''}
+    `;
+}
+
+function displayMultipleSetupResults(results) {
+    const container = document.getElementById('resultsContainer');
+    
+    let content = `
+        <div class="row mb-3">
+            <div class="col-12">
+                <h6 class="text-trading-blue">Setup Comparison Summary</h6>
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <div class="metric-card">
+                            <div class="h4 text-light">${results.summary.total_setups}</div>
+                            <small class="text-muted">Setups Tested</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="metric-card">
+                            <div class="h4 text-trading-green">${results.summary.best_setup || 'N/A'}</div>
+                            <small class="text-muted">Best Sharpe</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="metric-card">
+                            <div class="h4 text-trading-blue">${results.summary.best_return || 'N/A'}%</div>
+                            <small class="text-muted">Best Return</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-dark table-striped">
+                <thead>
+                    <tr>
+                        <th>Setup</th>
+                        <th>Total Trades</th>
+                        <th>Win Rate</th>
+                        <th>Total Return</th>
+                        <th>Annual Return</th>
+                        <th>Sharpe Ratio</th>
+                        <th>Max Drawdown</th>
+                        <th>Profit Factor</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    for (const [setupName, setupData] of Object.entries(results.setups)) {
+        content += `
+            <tr>
+                <td><strong>${setupName.replace('_', ' ').toUpperCase()}</strong></td>
+                <td>${setupData.total_trades || 0}</td>
+                <td class="text-trading-green">${setupData.win_rate || 0}%</td>
+                <td class="${setupData.total_return > 0 ? 'text-trading-green' : 'text-trading-red'}">
+                    ${setupData.total_return || 0}%
+                </td>
+                <td class="${setupData.annual_return > 0 ? 'text-trading-green' : 'text-trading-red'}">
+                    ${setupData.annual_return || 0}%
+                </td>
+                <td class="text-trading-yellow">${setupData.sharpe_ratio || 'N/A'}</td>
+                <td class="text-trading-red">${setupData.max_drawdown || 0}%</td>
+                <td class="text-trading-blue">${setupData.profit_factor || 'N/A'}</td>
+            </tr>
+        `;
+    }
+    
+    content += '</tbody></table></div>';
+    container.innerHTML = content;
+}
+
+function displayError(error) {
+    const container = document.getElementById('resultsContainer');
+    container.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <strong>Backtest Error:</strong> ${error}
+        </div>
+    `;
+}
+
+// Set default values on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Set position sizing default
+    {% if default_params and default_params.position_size_method %}
+    document.getElementById('positionSizing').value = "{{ default_params.position_size_method }}";
+    {% endif %}
+});
+</script>
 {% endblock %}

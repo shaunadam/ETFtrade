@@ -12,59 +12,359 @@
     </div>
 </div>
 
-<div class="row">
+{% if error %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            {{ error }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Current Regime Status -->
+{% if current_regime and 'error' not in current_regime %}
+<div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-body text-center py-5">
-                <i class="bi bi-speedometer display-1 text-trading-yellow mb-3"></i>
-                <h3 class="text-light">Multi-Dimensional Regime Detection</h3>
-                <p class="text-muted mb-4">
-                    Comprehensive market regime analysis across volatility, trend, sector rotation,
-                    and risk sentiment to optimize trading strategy selection.
-                </p>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-speedometer me-2"></i>
+                    Current Market Regime
+                </h5>
+                <button class="btn btn-sm btn-outline-light" onclick="updateRegimeData()" id="updateBtn">
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    Update
+                </button>
+            </div>
+            <div class="card-body">
                 <div class="row">
-                    <div class="col-md-3">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-activity text-trading-red mb-2"></i>
-                                <h5>Volatility</h5>
-                                <p class="small text-muted">VIX-based volatility regime detection</p>
-                            </div>
+                    <div class="col-md-3 text-center">
+                        <div class="regime-indicator mb-2">
+                            <i class="bi bi-activity display-6 text-trading-red"></i>
+                        </div>
+                        <h6 class="text-trading-red">Volatility</h6>
+                        <span class="badge bg-secondary fs-6">{{ current_regime.volatility_regime | title }}</span>
+                        {% if current_regime.vix_level %}
+                        <div class="small text-muted mt-1">VIX: {{ "%.1f"|format(current_regime.vix_level) }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="regime-indicator mb-2">
+                            <i class="bi bi-trending-up display-6 text-trading-green"></i>
+                        </div>
+                        <h6 class="text-trading-green">Trend</h6>
+                        <span class="badge bg-secondary fs-6">{{ current_regime.trend_regime | title | replace('_', ' ') }}</span>
+                        {% if current_regime.spy_vs_sma200 %}
+                        <div class="small text-muted mt-1">SPY vs SMA200: {{ "%.1f"|format(current_regime.spy_vs_sma200) }}%</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="regime-indicator mb-2">
+                            <i class="bi bi-arrow-left-right display-6 text-trading-blue"></i>
+                        </div>
+                        <h6 class="text-trading-blue">Sector Rotation</h6>
+                        <span class="badge bg-secondary fs-6">{{ current_regime.sector_rotation | title | replace('_', ' ') }}</span>
+                        {% if current_regime.growth_value_ratio %}
+                        <div class="small text-muted mt-1">Growth/Value: {{ "%.2f"|format(current_regime.growth_value_ratio) }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="regime-indicator mb-2">
+                            <i class="bi bi-shield-check display-6 text-trading-yellow"></i>
+                        </div>
+                        <h6 class="text-trading-yellow">Risk Sentiment</h6>
+                        <span class="badge bg-secondary fs-6">{{ current_regime.risk_on_off | title | replace('_', ' ') }}</span>
+                        {% if current_regime.risk_on_off_ratio %}
+                        <div class="small text-muted mt-1">Risk Ratio: {{ "%.2f"|format(current_regime.risk_on_off_ratio) }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if current_regime.date %}
+                <div class="row mt-3">
+                    <div class="col-12 text-center">
+                        <small class="text-muted">
+                            <i class="bi bi-calendar me-1"></i>
+                            Last Updated: {{ current_regime.date }}
+                        </small>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Analysis Summary -->
+{% if analysis and 'error' not in analysis %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-bar-chart me-2"></i>
+                    Regime Stability
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="display-6 text-trading-green">{{ analysis.stability_score or 0 }}</div>
+                            <small class="text-muted">Stability Score</small>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-trending-up text-trading-green mb-2"></i>
-                                <h5>Trend</h5>
-                                <p class="small text-muted">Market trend analysis vs key moving averages</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-arrow-left-right text-trading-blue mb-2"></i>
-                                <h5>Sector Rotation</h5>
-                                <p class="small text-muted">Growth vs Value rotation patterns</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-shield-check text-trading-yellow mb-2"></i>
-                                <h5>Risk Sentiment</h5>
-                                <p class="small text-muted">Risk-on vs Risk-off market conditions</p>
-                            </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="display-6 text-trading-yellow">{{ analysis.regime_changes_30d or 0 }}</div>
+                            <small class="text-muted">Changes (30d)</small>
                         </div>
                     </div>
                 </div>
-                <div class="mt-4">
-                    <span class="badge bg-warning fs-6">Coming Soon</span>
+                <div class="progress mt-3">
+                    <div class="progress-bar" style="width: {{ (analysis.stability_score or 0) * 100 }}%"></div>
+                </div>
+                <small class="text-muted">Higher stability indicates consistent regime conditions</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pie-chart me-2"></i>
+                    Regime Distribution (30d)
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if analysis.regime_distribution %}
+                <div class="regime-distribution">
+                    {% for regime, count in analysis.regime_distribution.items() %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="small text-muted">{{ regime | replace('-', ' ') | title }}</span>
+                        <span class="badge bg-secondary">{{ count }} days</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted">
+                    <i class="bi bi-info-circle me-2"></i>
+                    No regime distribution data available
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Regime History -->
+{% if analysis and analysis.recent_history %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history me-2"></i>
+                    Recent Regime History
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Volatility</th>
+                                <th>Trend</th>
+                                <th>Sector Rotation</th>
+                                <th>Risk Sentiment</th>
+                                <th>VIX</th>
+                                <th>SPY vs SMA200</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for regime in analysis.recent_history %}
+                            <tr>
+                                <td>{{ regime.date }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ regime.volatility_regime | title }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ regime.trend_regime | title | replace('_', ' ') }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ regime.sector_rotation | title | replace('_', ' ') }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ regime.risk_on_off | title | replace('_', ' ') }}</span>
+                                </td>
+                                <td>
+                                    {% if regime.vix_level %}
+                                    {{ "%.1f"|format(regime.vix_level) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if regime.spy_vs_sma200 %}
+                                    {{ "%.1f"|format(regime.spy_vs_sma200) }}%
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endif %}
+
+<!-- Chart Placeholder -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Regime Timeline
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="regimeChart" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let regimeChart;
+
+function updateRegimeData() {
+    const button = document.getElementById('updateBtn');
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.innerHTML = '<i class="bi bi-arrow-clockwise me-1 fa-spin"></i> Updating...';
+    button.disabled = true;
+    
+    fetch('/regime/api/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message and reload page
+            alert('Regime data updated successfully!');
+            location.reload();
+        } else {
+            alert('Failed to update regime data: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error updating regime data:', error);
+        alert('Error updating regime data. Please try again.');
+    })
+    .finally(() => {
+        // Restore button state
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function loadRegimeChart() {
+    fetch('/regime/api/history?days=30')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.data) {
+            const regimeData = data.data.reverse(); // Reverse to show chronologically
+            
+            // Create traces for each regime dimension
+            const dates = regimeData.map(d => d.date);
+            const volatilityTrace = {
+                x: dates,
+                y: regimeData.map(d => {
+                    const val = d.volatility_regime;
+                    return val === 'low' ? 1 : val === 'medium' ? 2 : 3;
+                }),
+                name: 'Volatility',
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#dc3545' }
+            };
+            
+            const trendTrace = {
+                x: dates,
+                y: regimeData.map(d => {
+                    const val = d.trend_regime;
+                    return val === 'strong_uptrend' ? 4 : val === 'mild_uptrend' ? 3 : val === 'ranging' ? 2 : 1;
+                }),
+                name: 'Trend',
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { color: '#28a745' },
+                yaxis: 'y2'
+            };
+            
+            const layout = {
+                title: 'Market Regime Timeline (30 Days)',
+                plot_bgcolor: '#343a40',
+                paper_bgcolor: '#212529',
+                font: { color: '#ffffff' },
+                xaxis: { 
+                    title: 'Date',
+                    gridcolor: '#495057',
+                    color: '#ffffff'
+                },
+                yaxis: {
+                    title: 'Volatility Regime',
+                    tickvals: [1, 2, 3],
+                    ticktext: ['Low', 'Medium', 'High'],
+                    gridcolor: '#495057',
+                    color: '#ffffff'
+                },
+                yaxis2: {
+                    title: 'Trend Regime',
+                    tickvals: [1, 2, 3, 4],
+                    ticktext: ['Downtrend', 'Ranging', 'Mild Up', 'Strong Up'],
+                    overlaying: 'y',
+                    side: 'right',
+                    gridcolor: '#495057',
+                    color: '#ffffff'
+                },
+                legend: {
+                    font: { color: '#ffffff' }
+                }
+            };
+            
+            Plotly.newPlot('regimeChart', [volatilityTrace, trendTrace], layout, {
+                responsive: true,
+                displayModeBar: false
+            });
+        } else {
+            document.getElementById('regimeChart').innerHTML = 
+                '<div class="text-center text-muted py-5"><i class="bi bi-info-circle me-2"></i>No regime data available for chart</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error loading regime chart:', error);
+        document.getElementById('regimeChart').innerHTML = 
+            '<div class="text-center text-muted py-5"><i class="bi bi-exclamation-triangle me-2"></i>Error loading chart data</div>';
+    });
+}
+
+// Load chart when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadRegimeChart();
+});
+</script>
 {% endblock %}

@@ -89,10 +89,10 @@ class DataService:
                 try:
                     if force_refresh:
                         # Force full refresh
-                        data = self.data_cache._fetch_and_cache_data(symbol, "2y", force_refresh=True)
+                        data = self.data_cache.get_cached_data(symbol, "2y", force_refresh=True)
                     else:
                         # Smart refresh (default behavior)
-                        data = self.data_cache.get_data(symbol)
+                        data = self.data_cache.get_cached_data(symbol)
                     
                     if not data.empty:
                         results['success'].append({
@@ -135,7 +135,7 @@ class DataService:
         """Get data for a specific symbol"""
         try:
             # Get price data from cache
-            data = self.data_cache.get_data(symbol, period)
+            data = self.data_cache.get_cached_data(symbol, period)
             
             if data.empty:
                 return {
