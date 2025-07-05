@@ -34,19 +34,27 @@
     </div>
 </div>
 
-<!-- Export Options -->
+<!-- Export Options & Backtest Actions -->
 {% if results.results %}
 <div class="row mb-3">
     <div class="col-12">
-        <div class="d-flex justify-content-end gap-2">
-            <button class="btn btn-outline-light btn-sm" onclick="exportResults('csv')">
-                <i class="bi bi-file-earmark-csv me-1"></i>
-                Export CSV
-            </button>
-            <button class="btn btn-outline-light btn-sm" onclick="exportResults('json')">
-                <i class="bi bi-file-earmark-code me-1"></i>
-                Export JSON
-            </button>
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <button class="btn btn-success" id="runBacktestBtn" onclick="runBacktestOnSelected()" disabled>
+                    <i class="bi bi-play-fill me-2"></i>
+                    Run Backtest on Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm" onclick="exportResults('csv')">
+                    <i class="bi bi-file-earmark-csv me-1"></i>
+                    Export CSV
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="exportResults('json')">
+                    <i class="bi bi-file-earmark-code me-1"></i>
+                    Export JSON
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -68,6 +76,14 @@
                     <table class="table table-dark table-hover mb-0">
                         <thead class="table-dark">
                             <tr>
+                                <th>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="selectAll" onchange="toggleAllCheckboxes(this)">
+                                        <label class="form-check-label" for="selectAll">
+                                            Select
+                                        </label>
+                                    </div>
+                                </th>
                                 <th>Symbol</th>
                                 <th>Name</th>
                                 <th>Type</th>
@@ -84,6 +100,16 @@
                         <tbody>
                             {% for result in results.results %}
                             <tr>
+                                <td>
+                                    <div class="form-check">
+                                        <input class="form-check-input instrument-checkbox" type="checkbox" 
+                                               value="{{ result.instrument.symbol }}" 
+                                               data-symbol="{{ result.instrument.symbol }}"
+                                               data-name="{{ result.instrument.name }}"
+                                               data-type="{{ result.instrument.type }}"
+                                               onchange="updateBacktestButton()">
+                                    </div>
+                                </td>
                                 <td>
                                     <strong class="text-trading-blue">{{ result.instrument.symbol }}</strong>
                                 </td>
@@ -533,19 +559,76 @@ function downloadChart() {
     }
 }
 
+// Checkbox functionality
+function toggleAllCheckboxes(selectAllCheckbox) {
+    const checkboxes = document.querySelectorAll('.instrument-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    updateBacktestButton();
+}
+
+function updateBacktestButton() {
+    const selectedCheckboxes = document.querySelectorAll('.instrument-checkbox:checked');
+    const selectedCount = selectedCheckboxes.length;
+    
+    document.getElementById('selectedCount').textContent = selectedCount;
+    document.getElementById('runBacktestBtn').disabled = selectedCount === 0;
+    
+    // Update select all checkbox state
+    const allCheckboxes = document.querySelectorAll('.instrument-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAll');
+    
+    if (selectedCount === 0) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = false;
+    } else if (selectedCount === allCheckboxes.length) {
+        selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.checked = true;
+    } else {
+        selectAllCheckbox.indeterminate = true;
+        selectAllCheckbox.checked = false;
+    }
+}
+
+function runBacktestOnSelected() {
+    const selectedCheckboxes = document.querySelectorAll('.instrument-checkbox:checked');
+    
+    if (selectedCheckboxes.length === 0) {
+        alert('Please select at least one instrument to backtest.');
+        return;
+    }
+    
+    // Gather selected instruments
+    const selectedInstruments = Array.from(selectedCheckboxes).map(checkbox => ({
+        symbol: checkbox.dataset.symbol,
+        name: checkbox.dataset.name,
+        type: checkbox.dataset.type
+    }));
+    
+    // Store selection in sessionStorage for the backtest page
+    sessionStorage.setItem('selectedInstruments', JSON.stringify(selectedInstruments));
+    
+    // Navigate to backtest page with selected instruments
+    window.location.href = '/backtest?source=screener&selected=' + selectedInstruments.length;
+}
+
 // Sort table functionality
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.querySelector('table');
     if (table) {
-        // Add sorting indicators to headers
+        // Add sorting indicators to headers (skip checkbox column)
         const headers = table.querySelectorAll('th');
         headers.forEach((header, index) => {
-            if (index < headers.length - 1) { // Don't make actions column sortable
+            if (index > 0 && index < headers.length - 1) { // Skip checkbox and actions columns
                 header.style.cursor = 'pointer';
                 header.addEventListener('click', () => sortTable(table, index));
             }
         });
     }
+    
+    // Initialize backtest button state
+    updateBacktestButton();
 });
 
 function sortTable(table, columnIndex) {

@@ -23,6 +23,30 @@
 </div>
 {% endif %}
 
+<!-- Selected Instruments from Screener -->
+<div class="row mb-4" id="selectedInstrumentsSection" style="display: none;">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Selected Instruments:</strong>
+                    <span id="selectedInstrumentsCount">0</span> instruments selected from screener
+                </div>
+                <button class="btn btn-sm btn-outline-primary" onclick="toggleInstrumentsList()">
+                    <i class="bi bi-eye me-1"></i>
+                    <span id="toggleText">Show</span>
+                </button>
+            </div>
+            <div id="instrumentsList" style="display: none;" class="mt-3">
+                <div class="row" id="instrumentsGrid">
+                    <!-- Instruments will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Backtest Configuration -->
 <div class="row">
     <div class="col-lg-4">
@@ -178,11 +202,75 @@
 
 <script>
 let backtestInProgress = false;
+let selectedInstruments = [];
 
 document.getElementById('backtestForm').addEventListener('submit', function(e) {
     e.preventDefault();
     runBacktest();
 });
+
+function toggleInstrumentsList() {
+    const list = document.getElementById('instrumentsList');
+    const toggleText = document.getElementById('toggleText');
+    
+    if (list.style.display === 'none') {
+        list.style.display = 'block';
+        toggleText.textContent = 'Hide';
+    } else {
+        list.style.display = 'none';
+        toggleText.textContent = 'Show';
+    }
+}
+
+function loadSelectedInstruments() {
+    const stored = sessionStorage.getItem('selectedInstruments');
+    if (stored) {
+        selectedInstruments = JSON.parse(stored);
+        displaySelectedInstruments();
+    }
+}
+
+function displaySelectedInstruments() {
+    if (selectedInstruments.length === 0) {
+        document.getElementById('selectedInstrumentsSection').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('selectedInstrumentsSection').style.display = 'block';
+    document.getElementById('selectedInstrumentsCount').textContent = selectedInstruments.length;
+    
+    const grid = document.getElementById('instrumentsGrid');
+    grid.innerHTML = selectedInstruments.map(instrument => `
+        <div class="col-md-3 col-sm-4 col-6 mb-2">
+            <div class="card bg-dark border-secondary">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong class="text-trading-blue">${instrument.symbol}</strong>
+                            <br>
+                            <small class="text-muted">${instrument.type}</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeInstrument('${instrument.symbol}')">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function removeInstrument(symbol) {
+    selectedInstruments = selectedInstruments.filter(inst => inst.symbol !== symbol);
+    sessionStorage.setItem('selectedInstruments', JSON.stringify(selectedInstruments));
+    displaySelectedInstruments();
+}
+
+function clearSelectedInstruments() {
+    selectedInstruments = [];
+    sessionStorage.removeItem('selectedInstruments');
+    displaySelectedInstruments();
+}
 
 function runBacktest() {
     if (backtestInProgress) return;
@@ -211,7 +299,8 @@ function runBacktest() {
         profit_target_r: parseFloat(formData.get('profit_target_r')),
         confidence_threshold: parseFloat(formData.get('confidence_threshold')),
         max_holding_days: parseInt(formData.get('max_holding_days')),
-        position_size_method: formData.get('position_size_method')
+        position_size_method: formData.get('position_size_method'),
+        selected_instruments: selectedInstruments.length > 0 ? selectedInstruments.map(inst => inst.symbol) : null
     };
     
     // Validate parameters first
@@ -274,21 +363,35 @@ function displayResults(results) {
         return;
     }
     
+    // Add header for selected instruments if applicable
+    let headerHtml = '';
+    if (results.selected_instruments && results.selected_instruments.length > 0) {
+        headerHtml = `
+            <div class="alert alert-success mb-3">
+                <i class="bi bi-check-circle me-2"></i>
+                <strong>Backtest Results for Selected Instruments:</strong>
+                ${results.selected_instruments.length} instruments from screener
+                (${results.selected_instruments.join(', ')})
+            </div>
+        `;
+    }
+    
     // Check if multiple setups or single setup
     if (results.setups) {
-        displayMultipleSetupResults(results);
+        displayMultipleSetupResults(results, headerHtml);
     } else {
-        displaySingleSetupResults(results);
+        displaySingleSetupResults(results, headerHtml);
     }
     
     // Show detailed results section
     document.getElementById('detailedResults').style.display = 'block';
 }
 
-function displaySingleSetupResults(results) {
+function displaySingleSetupResults(results, headerHtml = '') {
     const container = document.getElementById('resultsContainer');
     
     container.innerHTML = `
+        ${headerHtml}
         <div class="row">
             <div class="col-md-6">
                 <h6 class="text-trading-blue">Performance Summary</h6>
@@ -388,10 +491,11 @@ function displaySingleSetupResults(results) {
     `;
 }
 
-function displayMultipleSetupResults(results) {
+function displayMultipleSetupResults(results, headerHtml = '') {
     const container = document.getElementById('resultsContainer');
     
     let content = `
+        ${headerHtml}
         <div class="row mb-3">
             <div class="col-12">
                 <h6 class="text-trading-blue">Setup Comparison Summary</h6>
@@ -474,6 +578,20 @@ document.addEventListener('DOMContentLoaded', function() {
     {% if default_params and default_params.position_size_method %}
     document.getElementById('positionSizing').value = "{{ default_params.position_size_method }}";
     {% endif %}
+    
+    // Load selected instruments from screener
+    loadSelectedInstruments();
+    
+    // Check if coming from screener
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('source') === 'screener') {
+        // Show a toast notification
+        setTimeout(() => {
+            if (selectedInstruments.length > 0) {
+                alert(`Ready to backtest ${selectedInstruments.length} instruments selected from screener results.`);
+            }
+        }, 500);
+    }
 });
 </script>
 {% endblock %}

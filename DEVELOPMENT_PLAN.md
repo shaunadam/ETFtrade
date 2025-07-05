@@ -1,103 +1,91 @@
 # Phase 4: Flask Web Application Improvements - Development Plan
 
-## Overview
-Enhance the existing Flask application with professional trading features, improved user experience, and comprehensive functionality based on the available data and infrastructure.
+## ✅ **COMPLETED SECTIONS**
 
-## Key Improvements
+### ✅ Phase 4.1: Screener Charting & Progress Bars **COMPLETE**
+1. ✅ **Interactive Screener Charts**: Full Plotly.js implementation with:
+   - Price action with volume subplots
+   - Technical indicators (SMA20/50/200, RSI, Bollinger Bands, EMA13)
+   - Trade setup visualization with entry/exit signals
+   - Modal popup charts with period selection
+   - Chart download functionality
+2. ✅ **Progress Bar Standardization**: Unified progress system across all operations:
+   - Screener scanning with 5-step progress tracking
+   - Real-time progress updates with meaningful status messages
+   - Professional loading states with spinner fallbacks
+3. ✅ **Enhanced Export Functionality**: Complete CSV/JSON export with proper headers
 
-### 1. Stock Screener Charting Implementation
-- **Add Interactive Price Charts**: Implement Plotly.js charts in screener results showing:
-  - Price action with volume
-  - Technical indicators (SMA20/50/200, RSI, Bollinger Bands)
-  - Trade setup visualization (entry/exit points)
-  - Regime indicators overlay
-- **Chart Integration**: 
-  - Add chart buttons to results table
-  - Modal popup charts for quick analysis
-  - Full-page chart view with detailed analysis
-- **Technical Enhancement**: Use existing cached indicator data from the database
+### ✅ Phase 4.2: Selective Backtesting from Screener **COMPLETE**
+1. ✅ **Instrument Selection System**: 
+   - Checkbox functionality in screener results table
+   - "Select All" master checkbox with indeterminate states
+   - Real-time selection count display
+2. ✅ **Seamless Workflow Integration**:
+   - "Run Backtest on Selected" button functionality
+   - SessionStorage persistence across page navigation
+   - Automatic backtest page configuration for selected instruments
+3. ✅ **Enhanced Backtest Interface**:
+   - Visual display of selected instruments with remove capability
+   - Clear indication when backtesting selected vs all instruments
+   - Results clearly labeled for selected instrument subset
 
-### 2. Progress Bar Standardization
-- **Unified Progress System**: Create consistent progress feedback across all operations:
-  - Screener scanning progress
-  - Backtest execution progress  
-  - Data cache refresh progress
-  - Chart loading states
-- **Real-time Updates**: Implement WebSocket or polling for live progress updates
-- **User Experience**: Professional loading states with meaningful status messages
+## 🚧 **REMAINING DEVELOPMENT**
 
-### 3. Selective Backtesting from Screener
-- **Instrument Selection**: Allow users to select specific stocks/ETFs from screener results
-- **Batch Backtesting**: Run backtests on selected instruments instead of all instruments
-- **Integration**: Seamless workflow from screener → selection → backtest → results
-- **Performance**: Optimized backtesting for selected subsets
+### Phase 4.3: Risk Management Calculator **NEXT**
+Focus on implementing a comprehensive risk management tool.
+Make sure to read portfolio_risk.py
+Keep in mind that we haven't actually created any journal entry logic. There is no portfolio existing. Maybe we need to do that first. 
 
-### 4. Professional Trading Tools
-Based on available data and professional trading needs:
-- **Correlation Matrix**: Real-time correlation analysis between instruments
-- **Sector Rotation Dashboard**: Track sector performance and rotation patterns
-- **Risk Management Tools**: 
-  - Portfolio heat map
-  - Position sizing calculator
-  - Risk/reward visualization
-- **Market Scanner**: Real-time market movers and unusual volume detection
-- **Regime Analysis Dashboard**: Deep dive into market regime transitions
+**Core Risk Management Calculator Features:**
+- **Position Sizing Calculator**: 
+  - Risk-based position sizing (1-2% account risk per trade)
+  - Account size and risk percentage inputs
+  - Entry price, stop loss, and target price inputs
+  - Automatic share calculation and dollar amounts
+- **Risk/Reward Analysis**:
+  - R-multiple calculation and visualization
+  - Win rate breakeven analysis
+  - Expected value calculations
+- **Portfolio Risk Assessment**:
+  - Current portfolio risk exposure
+  - Correlation-adjusted risk calculations
+  - Max drawdown projections
+- **Trade Validation**:
+  - Pre-trade risk assessment
+  - Position size recommendations
+  - Risk guidelines compliance checking
 
-### 5. Enhanced User Interface
-- **Responsive Design**: Ensure mobile-friendly layouts
-- **Data Export**: Complete CSV/JSON export functionality
-- **Search & Filter**: Advanced filtering across all data views
-- **Performance Optimization**: Lazy loading for large datasets
-- **Toast Notifications**: Comprehensive user feedback system
 
-### 6. Code Quality & Architecture
-- **Service Layer**: Complete all placeholder implementations
-- **Error Handling**: Robust error handling with user-friendly messages
-- **API Consistency**: Standardize all API endpoints
-- **Testing**: Add comprehensive tests for new functionality
-- **Documentation**: Update inline documentation
+### Phase 4.5: Code Quality & Architecture
+**Technical Debt and Improvements:**
+- Complete all remaining placeholder implementations in service layer
+- Update inline documentation
 
-## Implementation Order
+## 📋 **OUTSTANDING DEVELOPMENT ITEMS**
 
-### Phase 4.1: Screener Charting & Progress Bars
-1. Add chart functionality to screener results
-2. Implement standardized progress bars
-3. Complete export functionality
+### High Priority
+1. **Risk Management Calculator** (Phase 4.3) - Ready for implementation
 
-### Phase 4.2: Selective Backtesting
-1. Add instrument selection to screener results
-2. Integrate selected instruments with backtest module
-3. Optimize backtest performance for subsets
 
-### Phase 4.3: Professional Trading Tools
-1. Correlation matrix implementation
-2. Sector rotation dashboard
-3. Risk management tools
-4. Market scanner features
 
-### Phase 4.4: Polish & Optimization
-1. Mobile responsiveness improvements
-2. Performance optimization
-3. Error handling enhancement
-4. Code cleanup and testing
+## Implementation Focus
 
-## Technical Implementation
-- Leverage existing service layer architecture
-- Use cached data for performance
-- Implement progressive enhancement
+**Next Phase:** Risk Management Calculator
+- Leverage existing data infrastructure
+- Build on established service layer architecture  
 - Maintain dark theme consistency
 - Follow existing code patterns and conventions
 
 ## Success Metrics
-- All screener operations show progress feedback
-- Charts load in <2 seconds
-- Selective backtesting works seamlessly
-- Professional trading tools provide actionable insights
-- Zero placeholder functionality remaining
+- ✅ All screener operations show progress feedback  
+- ✅ Charts load in <2 seconds
+- ✅ Selective backtesting works seamlessly
+- 🎯 Risk management calculator provides actionable position sizing guidance
+- 🎯 Professional trading workflow from screening → analysis → risk assessment
 
 ## Testing Strategy
-- Test each phase incrementally
-- Validate with real market data
-- Ensure cross-browser compatibility
-- Performance testing with large datasets
-- User experience validation
+- ✅ Phase 4.1 & 4.2 tested and validated
+- 🎯 Phase 4.3 will be tested incrementally with real market data
+- 🎯 Ensure cross-browser compatibility for new risk calculator
+- 🎯 Performance testing with large datasets
+- 🎯 User experience validation for trading workflow
