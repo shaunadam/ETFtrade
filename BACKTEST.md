@@ -182,26 +182,6 @@
    - Human-readable regime analysis
    - Preferred setups recommendations
 
-### 🔄 CURRENT ISSUE - RegimeValidator Testing
-**Status**: Ready to test but enum values need correction
-**Issue**: RegimeValidator test script uses incorrect enum names (UPTREND vs STRONG_UPTREND)
-**Fix Required**: Update line 402 in regime_validator.py to use correct enum values:
-- `TrendRegime.STRONG_UPTREND` (not UPTREND)
-- `SectorRotation.GROWTH_FAVORED` (not GROWTH_OUTPERFORMING)
-
-### 📋 REMAINING TASKS (High Priority)
-
-#### Phase 2 Completion
-7. **🔄 Extract TradeManager class**: Next major refactoring task
-   - Move trade entry/exit logic from BacktestEngine
-   - Position sizing calculations
-   - Risk management enforcement
-   - Trade state management
-
-8. **⏳ Simplify BacktestEngine**: Reduce to < 500 lines
-   - After TradeManager extraction
-   - Clean up remaining methods
-   - Improve class organization
 
 #### Phase 3: Integration
 9. **⏳ Fix Flask service result formatting**: backtest_service.py
@@ -220,11 +200,6 @@
     - Component integration tests
     - Error handling scenarios
 
-### 🎯 IMMEDIATE NEXT STEPS
-1. **Fix RegimeValidator enum values** and test successfully
-2. **Extract TradeManager class** from BacktestEngine
-3. **Simplify BacktestEngine** to target < 500 lines
-4. **Update Flask integration** with new configuration system
 
 ### 📊 PROGRESS METRICS
 - **Code Quality**: 2/4 major classes extracted (ParameterOptimizer ✅, RegimeValidator ✅, TradeManager ⏳, TradeManager ⏳)
@@ -234,19 +209,7 @@
 - **Documentation**: ✅ Comprehensive docstrings added
 
 ### 🚀 ESTIMATED COMPLETION
-- **Phase 2 (Refactoring)**: 90% complete, 1-2 sessions remaining
 - **Phase 3 (Integration)**: 0% complete, 2-3 sessions needed
 - **Phase 4 (Testing)**: 0% complete, 2-3 sessions needed
 
 ## Current Bug Analysis
-
-### "Filtering to 0 selected instruments" Issue - ✅ RESOLVED
-**Status**: Fixed in commit with case-insensitive symbol matching
-**Solution**: Added proper symbol normalization and validation
-**Impact**: Backtests now work correctly with selected instruments from screener
-
-### RegimeValidator Enum Issue - 🔄 IN PROGRESS
-**Location**: `regime_validator.py:402` in test script
-**Root Cause**: Using incorrect enum names (UPTREND vs STRONG_UPTREND)
-**Impact**: Module test fails, blocking validation of extracted class
-**Fix Required**: Update enum values to match regime_detection.py definitions

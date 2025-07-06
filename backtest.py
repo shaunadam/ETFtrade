@@ -572,7 +572,14 @@ class BacktestEngine:
         self.logger.debug(f"Selected instruments: {selected_instruments}")
         
         # Get symbols from setup manager with instrument type filtering
-        all_symbols = self.setup_manager.get_all_symbols(instrument_types)
+        # If specific instruments are requested but no instrument types specified,
+        # search across all instrument types to find the requested symbols
+        search_instrument_types = instrument_types
+        if selected_instruments and instrument_types is None:
+            search_instrument_types = ['ETF', 'ETN', 'Stock']  # Include all types
+            self.logger.debug(f"Selected instruments requested without type filter - searching all instrument types")
+        
+        all_symbols = self.setup_manager.get_all_symbols(search_instrument_types)
         self.logger.debug(f"Found {len(all_symbols)} symbols from setup manager: {all_symbols[:10]}...")
         
         # Apply selected instruments filter for performance optimization
