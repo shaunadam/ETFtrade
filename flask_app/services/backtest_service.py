@@ -256,11 +256,21 @@ class BacktestService:
                 'losing_trades': metrics.losing_trades,
                 'win_rate': round(metrics.win_rate * 100, 2),
                 'total_return': round(metrics.total_return * 100, 2),
-                'annual_return': round(metrics.annual_return * 100, 2),
+                'annual_return': round(metrics.annual_return * 100, 2) if hasattr(metrics, 'annual_return') else 0,
                 'sharpe_ratio': round(metrics.sharpe_ratio, 2) if metrics.sharpe_ratio else None,
                 'max_drawdown': round(metrics.max_drawdown * 100, 2),
                 'profit_factor': round(metrics.profit_factor, 2) if metrics.profit_factor else None,
                 'avg_r_multiple': round(metrics.avg_r_multiple, 2) if metrics.avg_r_multiple else None,
+                # Professional metrics
+                'sortino_ratio': round(metrics.sortino_ratio, 2) if hasattr(metrics, 'sortino_ratio') and metrics.sortino_ratio else None,
+                'information_ratio': round(metrics.information_ratio, 2) if hasattr(metrics, 'information_ratio') and metrics.information_ratio else None,
+                'max_adverse_excursion': round(metrics.max_adverse_excursion, 2) if hasattr(metrics, 'max_adverse_excursion') else None,
+                'max_favorable_excursion': round(metrics.max_favorable_excursion, 2) if hasattr(metrics, 'max_favorable_excursion') else None,
+                'avg_mae': round(metrics.avg_mae, 2) if hasattr(metrics, 'avg_mae') else None,
+                'avg_mfe': round(metrics.avg_mfe, 2) if hasattr(metrics, 'avg_mfe') else None,
+                'downside_deviation': round(metrics.downside_deviation * 100, 2) if hasattr(metrics, 'downside_deviation') else None,
+                'tracking_error': round(metrics.tracking_error * 100, 2) if hasattr(metrics, 'tracking_error') else None,
+                'benchmark_return': round(metrics.benchmark_return * 100, 2) if hasattr(metrics, 'benchmark_return') else None,
                 'trades': [],
                 'equity_curve': []
             }

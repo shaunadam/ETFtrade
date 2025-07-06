@@ -80,6 +80,10 @@ class BacktestTrade:
     r_multiple: Optional[float] = None
     pnl: Optional[float] = None
     days_held: Optional[int] = None
+    
+    # Professional metrics tracking
+    mae: float = 0.0  # Maximum Adverse Excursion
+    mfe: float = 0.0  # Maximum Favorable Excursion
 
 
 @dataclass
@@ -123,6 +127,18 @@ class PerformanceMetrics:
     consecutive_wins: int
     consecutive_losses: int
     profit_factor: float
+    
+    # Professional metrics (Phase 1 enhancements)
+    sortino_ratio: float = 0.0
+    information_ratio: float = 0.0
+    max_adverse_excursion: float = 0.0
+    max_favorable_excursion: float = 0.0
+    avg_mae: float = 0.0
+    avg_mfe: float = 0.0
+    annual_return: float = 0.0
+    downside_deviation: float = 0.0
+    tracking_error: float = 0.0
+    benchmark_return: float = 0.0
     
     # Instrument type breakdown
     etf_trades: int = 0
@@ -671,6 +687,19 @@ class BacktestEngine:
                 if current_price is None:
                     continue
                 
+                # Update MAE/MFE tracking
+                price_change_pct = (current_price - position.entry_price) / position.entry_price
+                
+                # Track Maximum Adverse Excursion (MAE) - worst move against position
+                adverse_excursion = min(0, price_change_pct) * 100  # Convert to percentage
+                if adverse_excursion < position.mae:
+                    position.mae = adverse_excursion
+                
+                # Track Maximum Favorable Excursion (MFE) - best move in favor of position
+                favorable_excursion = max(0, price_change_pct) * 100  # Convert to percentage
+                if favorable_excursion > position.mfe:
+                    position.mfe = favorable_excursion
+                
                 # Check for exit conditions
                 exit_triggered = False
                 exit_reason = TradeStatus.OPEN
@@ -777,7 +806,12 @@ class BacktestEngine:
                 win_rate=0, avg_r_multiple=0, total_return=0,
                 max_drawdown=0, sharpe_ratio=0, calmar_ratio=0,
                 avg_days_held=0, largest_winner=0, largest_loser=0,
-                consecutive_wins=0, consecutive_losses=0, profit_factor=0
+                consecutive_wins=0, consecutive_losses=0, profit_factor=0,
+                # Professional metrics defaults
+                sortino_ratio=0.0, information_ratio=0.0,
+                max_adverse_excursion=0.0, max_favorable_excursion=0.0,
+                avg_mae=0.0, avg_mfe=0.0, annual_return=0.0,
+                downside_deviation=0.0, tracking_error=0.0, benchmark_return=0.0
             )
         
         # Basic trade statistics
@@ -860,6 +894,72 @@ class BacktestEngine:
         etf_avg_return = np.mean(etf_returns) if etf_returns else 0
         stock_avg_return = np.mean(stock_returns) if stock_returns else 0
         
+        # Professional metrics calculations (Phase 1)
+        # Calculate annual return
+        if len(self.daily_dates) > 1:
+            days_elapsed = (self.daily_dates[-1] - self.daily_dates[0]).days
+            annual_return = (1 + total_return) ** (365 / days_elapsed) - 1 if days_elapsed > 0 else 0
+        else:
+            annual_return = 0
+        
+        # Calculate downside deviation for Sortino ratio
+        downside_returns = [r for r in returns_series if r < 0]
+        downside_deviation = np.std(downside_returns) * np.sqrt(252) if downside_returns else 0
+        
+        # Calculate Sortino ratio
+        if downside_deviation > 0 and len(returns_series) > 1:
+            if len(self.daily_dates) > 1:
+                daily_rf_rate = risk_free_rate / 252
+                excess_returns = returns_series - daily_rf_rate
+                sortino_ratio = (excess_returns.mean() * 252) / downside_deviation
+            else:
+                sortino_ratio = 0
+        else:
+            sortino_ratio = 0
+        
+        # Calculate MAE and MFE metrics
+        mae_values = [t.mae for t in self.trades if t.mae != 0]
+        mfe_values = [t.mfe for t in self.trades if t.mfe != 0]
+        
+        max_adverse_excursion = max(mae_values) if mae_values else 0
+        max_favorable_excursion = max(mfe_values) if mfe_values else 0
+        avg_mae = np.mean(mae_values) if mae_values else 0
+        avg_mfe = np.mean(mfe_values) if mfe_values else 0
+        
+        # Benchmark comparison (SPY as benchmark)
+        benchmark_return = 0.0
+        information_ratio = 0.0
+        tracking_error = 0.0
+        
+        # Try to get SPY benchmark data for comparison
+        if len(self.daily_dates) > 1:
+            try:
+                spy_data = self.data_cache.get_price_data('SPY', self.daily_dates[0], self.daily_dates[-1])
+                if spy_data is not None and len(spy_data) > 1:
+                    spy_start = spy_data['close'].iloc[0]
+                    spy_end = spy_data['close'].iloc[-1]
+                    benchmark_return = (spy_end - spy_start) / spy_start
+                    
+                    # Calculate tracking error and information ratio
+                    if len(spy_data) > 1:
+                        spy_returns = spy_data['close'].pct_change().dropna()
+                        
+                        # Align portfolio and benchmark returns
+                        if len(spy_returns) > 0 and len(returns_series) > 0:
+                            min_length = min(len(spy_returns), len(returns_series))
+                            if min_length > 1:
+                                aligned_portfolio = returns_series.iloc[-min_length:]
+                                aligned_benchmark = spy_returns.iloc[-min_length:]
+                                
+                                excess_vs_benchmark = aligned_portfolio - aligned_benchmark
+                                tracking_error = excess_vs_benchmark.std() * np.sqrt(252)
+                                
+                                if tracking_error > 0:
+                                    information_ratio = (excess_vs_benchmark.mean() * 252) / tracking_error
+            except Exception:
+                # If benchmark data fails, use defaults
+                pass
+        
         return PerformanceMetrics(
             total_trades=total_trades,
             winning_trades=winning_trades,
@@ -883,7 +983,18 @@ class BacktestEngine:
             etf_avg_return=etf_avg_return,
             stock_avg_return=stock_avg_return,
             etf_avg_r_multiple=etf_avg_r,
-            stock_avg_r_multiple=stock_avg_r
+            stock_avg_r_multiple=stock_avg_r,
+            # Professional metrics
+            sortino_ratio=sortino_ratio,
+            information_ratio=information_ratio,
+            max_adverse_excursion=max_adverse_excursion,
+            max_favorable_excursion=max_favorable_excursion,
+            avg_mae=avg_mae,
+            avg_mfe=avg_mfe,
+            annual_return=annual_return,
+            downside_deviation=downside_deviation,
+            tracking_error=tracking_error,
+            benchmark_return=benchmark_return
         )
     
     def _calculate_max_drawdown(self) -> float:
