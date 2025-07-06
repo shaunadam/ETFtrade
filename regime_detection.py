@@ -162,6 +162,10 @@ class RegimeDetector:
     
     def _detect_volatility_regime(self, vix_data: pd.DataFrame) -> Tuple[VolatilityRegime, float]:
         """Detect volatility regime based on VIX levels."""
+        if vix_data.empty or 'Close' not in vix_data.columns:
+            # Default to medium volatility when no data available
+            return VolatilityRegime.MEDIUM, 25.0
+        
         current_vix = vix_data['Close'].iloc[-1]
         
         if current_vix < 20:
@@ -175,6 +179,10 @@ class RegimeDetector:
     
     def _detect_trend_regime(self, spy_data: pd.DataFrame) -> Tuple[TrendRegime, float]:
         """Detect trend regime based on SPY vs 200-day SMA."""
+        if spy_data.empty or 'Close' not in spy_data.columns:
+            # Default to ranging when no data available
+            return TrendRegime.RANGING, 1.0
+        
         current_price = spy_data['Close'].iloc[-1]
         
         # Use cached SMA200 indicator if available, otherwise calculate on-the-fly
@@ -207,6 +215,13 @@ class RegimeDetector:
     
     def _detect_sector_rotation(self, sector_data: Dict[str, pd.DataFrame]) -> Tuple[SectorRotation, float]:
         """Detect sector rotation based on Growth vs Value performance."""
+        # Check if we have the required data
+        required_symbols = ["QQQ", "IWM", "XLK", "XLF"]
+        for symbol in required_symbols:
+            if symbol not in sector_data or sector_data[symbol].empty or 'Close' not in sector_data[symbol].columns:
+                # Default to balanced when data is missing
+                return SectorRotation.BALANCED, 1.0
+        
         # Calculate QQQ/IWM and XLK/XLF ratios
         qqq_iwm_ratio = sector_data["QQQ"]['Close'].iloc[-1] / sector_data["IWM"]['Close'].iloc[-1]
         xlk_xlf_ratio = sector_data["XLK"]['Close'].iloc[-1] / sector_data["XLF"]['Close'].iloc[-1]
@@ -214,6 +229,10 @@ class RegimeDetector:
         # Use 20-day moving average of ratios to smooth signals
         qqq_iwm_ma = (sector_data["QQQ"]['Close'] / sector_data["IWM"]['Close']).rolling(20).mean().iloc[-1]
         xlk_xlf_ma = (sector_data["XLK"]['Close'] / sector_data["XLF"]['Close']).rolling(20).mean().iloc[-1]
+        
+        # Handle case where moving averages are NaN
+        if pd.isna(qqq_iwm_ma) or pd.isna(xlk_xlf_ma):
+            return SectorRotation.BALANCED, 1.0
         
         combined_ratio = (qqq_iwm_ratio / qqq_iwm_ma + xlk_xlf_ratio / xlk_xlf_ma) / 2
         
@@ -228,6 +247,16 @@ class RegimeDetector:
     
     def _detect_risk_sentiment(self, risk_data: Dict[str, pd.DataFrame]) -> Tuple[RiskSentiment, float]:
         """Detect risk sentiment based on defensive vs aggressive ETF performance."""
+        # Check if we have the required data
+        required_symbols = ["XLU", "XLP", "TLT", "QQQ", "XLF", "IWM"]
+        for symbol in required_symbols:
+            if symbol not in risk_data or risk_data[symbol].empty or 'Close' not in risk_data[symbol].columns:
+                # Default to neutral when data is missing
+                return RiskSentiment.NEUTRAL, 1.0
+            # Check if we have enough data for 21-day lookback
+            if len(risk_data[symbol]) < 21:
+                return RiskSentiment.NEUTRAL, 1.0
+        
         # Defensive performance (average of XLU, XLP, TLT)
         defensive_perf = (
             risk_data["XLU"]['Close'].iloc[-1] / risk_data["XLU"]['Close'].iloc[-21] +
@@ -241,6 +270,10 @@ class RegimeDetector:
             risk_data["XLF"]['Close'].iloc[-1] / risk_data["XLF"]['Close'].iloc[-21] +
             risk_data["IWM"]['Close'].iloc[-1] / risk_data["IWM"]['Close'].iloc[-21]
         ) / 3
+        
+        # Handle case where calculations result in NaN or infinite values
+        if pd.isna(defensive_perf) or pd.isna(aggressive_perf) or defensive_perf == 0:
+            return RiskSentiment.NEUTRAL, 1.0
         
         ratio = aggressive_perf / defensive_perf
         

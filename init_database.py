@@ -398,7 +398,7 @@ def bootstrap_market_data(cursor, bootstrap_level="core"):
             print(f"   [{i:2d}/{len(symbols_to_bootstrap)}] {symbol}...", end=" ")
             
             # Bootstrap with 2+ years of data
-            data = cache._fetch_and_cache_data(symbol, "2y")
+            data = cache._fetch_and_cache_data(symbol, "2y", force_refresh=True)
             
             if not data.empty:
                 print(f"✅ {len(data)} days")

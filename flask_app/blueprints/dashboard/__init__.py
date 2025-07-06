@@ -165,11 +165,12 @@ def get_recent_trades(limit=10):
         
         # Get recent trades with instrument information
         query = """
-        SELECT t.id, i.symbol, t.setup, t.entry_date, t.exit_date,
+        SELECT t.id, i.symbol, s.name as setup, t.entry_date, t.exit_date,
                t.entry_price, t.exit_price, t.r_actual,
                CASE WHEN t.exit_date IS NULL THEN 'Open' ELSE 'Closed' END as status
         FROM trades t
         JOIN instruments i ON t.instrument_id = i.id
+        LEFT JOIN setups s ON t.setup_id = s.id
         ORDER BY t.entry_date DESC
         LIMIT ?
         """

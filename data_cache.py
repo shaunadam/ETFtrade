@@ -60,22 +60,46 @@ class DataCache:
             DataFrame with OHLCV data and technical indicators
         """
         if force_refresh:
-            return self._fetch_and_cache_data(symbol, period)
+            return self._fetch_and_cache_data(symbol, period, force_refresh=True)
         
-        # Check if we need to refresh data
-        if self._should_refresh_data(symbol, period):
-            return self._fetch_and_cache_data(symbol, period)
+        # Weekend check: if it's weekend, try cache first before any refresh logic
+        today_weekday = datetime.now().weekday()
+        is_weekend = today_weekday >= 5  # Saturday=5, Sunday=6
         
-        # Try to get from cache
+        # Try to get from cache first
         cached_data = self._get_cached_price_data(symbol, period)
         if cached_data is not None and len(cached_data) > 0:
             # Add technical indicators from cache
             cached_data = self._add_cached_indicators(cached_data, symbol)
             return cached_data
         
-        # Fallback to yfinance
-        logger.info(f"Cache miss for {symbol}, fetching from yfinance")
-        return self._fetch_and_cache_data(symbol, period)
+        # If no cached data for the requested period, check if we have any cached data
+        any_cached_data = self._get_any_cached_data(symbol)
+        if any_cached_data is not None and len(any_cached_data) > 0:
+            if is_weekend:
+                # On weekends, return what we have rather than fetching
+                logger.info(f"Weekend cache fallback for {symbol}: returning {len(any_cached_data)} days of available data")
+                cached_data = self._add_cached_indicators(any_cached_data, symbol)
+                return cached_data
+        
+        # Check if we need to refresh data (only on weekdays or if no cache)
+        if not is_weekend and self._should_refresh_data(symbol, period):
+            return self._fetch_and_cache_data(symbol, period, force_refresh=False)
+        
+        # If we have cached data but it's weekday and needs refresh, still return cached data
+        if any_cached_data is not None and len(any_cached_data) > 0:
+            logger.debug(f"Using cached data for {symbol} (period: {period})")
+            cached_data = self._add_cached_indicators(any_cached_data, symbol)
+            return cached_data
+        
+        # Only try yfinance as last resort (and not on weekends)
+        if not is_weekend:
+            logger.debug(f"Cache miss for {symbol} (period: {period}), fetching from yfinance")
+            return self._fetch_and_cache_data(symbol, period, force_refresh=False)
+        else:
+            # Weekend with no cached data - return empty DataFrame
+            logger.info(f"No cached data available for {symbol} on weekend")
+            return pd.DataFrame()
     
     def _should_refresh_data(self, symbol: str, period: str) -> bool:
         """Determine if data should be refreshed from yfinance."""
@@ -145,6 +169,27 @@ class DataCache:
             
             return df
     
+    def _get_any_cached_data(self, symbol: str) -> Optional[pd.DataFrame]:
+        """Get any available cached data for a symbol, regardless of period."""
+        with sqlite3.connect(self.db_path) as conn:
+            query = """
+                SELECT date, open, high, low, close, volume
+                FROM price_data 
+                WHERE symbol = ?
+                ORDER BY date
+            """
+            
+            df = pd.read_sql_query(query, conn, params=(symbol,), 
+                                 parse_dates=['date'], index_col='date')
+            
+            if df.empty:
+                return None
+            
+            # Rename columns to match yfinance format
+            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            
+            return df
+    
     def _add_cached_indicators(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """Add technical indicators from cache to price data."""
         if df.empty:
@@ -184,12 +229,26 @@ class DataCache:
             
             return df
     
-    def _fetch_and_cache_data(self, symbol: str, period: str) -> pd.DataFrame:
+    def _fetch_and_cache_data(self, symbol: str, period: str, force_refresh: bool = False) -> pd.DataFrame:
         """Fetch data from yfinance and cache it."""
         try:
+            # Check if it's weekend and not force refresh
+            today_weekday = datetime.now().weekday()
+            if today_weekday >= 5 and not force_refresh:  # Saturday=5, Sunday=6
+                logger.info(f"Skipping weekend data fetch for {symbol} (use force_refresh=True to override)")
+                return pd.DataFrame()
+            
             logger.info(f"Fetching {symbol} data from yfinance...")
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period)
+            
+            # Ensure we get enough data for technical indicators (need 200+ days for SMA200)
+            # If requested period is short, expand it to ensure we have enough data
+            fetch_period = period
+            if period in ["1mo", "3mo", "6mo"]:
+                fetch_period = "1y"  # Get at least 1 year to ensure 200+ trading days
+                logger.debug(f"Expanding fetch period from {period} to {fetch_period} for indicator requirements")
+            
+            data = ticker.history(period=fetch_period)
             
             if data.empty:
                 logger.warning(f"No data returned for {symbol}")
@@ -234,7 +293,7 @@ class DataCache:
             """, cache_data)
             
             conn.commit()
-            logger.info(f"Cached {len(cache_data)} price records for {symbol}")
+            logger.debug(f"Cached {len(cache_data)} price records for {symbol}")
     
     def _calculate_and_cache_indicators(self, symbol: str, data: pd.DataFrame) -> pd.DataFrame:
         """Calculate technical indicators and cache them."""
@@ -268,14 +327,14 @@ class DataCache:
                 """, indicator_data)
                 
                 conn.commit()
-                logger.info(f"Cached {len(indicator_data)} indicator values for {symbol}")
+                logger.debug(f"Cached {len(indicator_data)} indicator values for {symbol}")
         
         return data
     
     def _add_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         """Add technical indicators to price data."""
         if len(data) < 200:  # Need enough data for 200-day SMA
-            logger.warning("Insufficient data for all indicators")
+            logger.warning(f"Insufficient data for all indicators: {len(data)} days (need 200+ for SMA200)")
         
         try:
             # Moving averages
@@ -378,7 +437,7 @@ class DataCache:
             try:
                 if force_full_refresh:
                     # Full refresh - get 2 years of data
-                    self._fetch_and_cache_data(symbol, "2y")
+                    self._fetch_and_cache_data(symbol, "2y", force_refresh=True)
                 else:
                     # Smart refresh - check what we need
                     min_date = self._get_min_cached_date(symbol)
@@ -387,7 +446,7 @@ class DataCache:
                     if min_date is None:
                         # No cached data - full bootstrap
                         logger.debug(f"No cached data for {symbol} - doing full bootstrap")
-                        self._fetch_and_cache_data(symbol, "2y")
+                        self._fetch_and_cache_data(symbol, "2y", force_refresh=False)
                     else:
                         # Healing strategy - refresh from safe point
                         heal_from = min_date - timedelta(days=200)  # Safety for SMA200
@@ -405,7 +464,7 @@ class DataCache:
                             period = "1y" if days_needed > 365 else "6mo" if days_needed > 180 else "3mo"
                             logger.debug(f"Refreshing {symbol} from {refresh_from} ({days_needed} days, period={period})")
                             
-                            self._fetch_and_cache_data(symbol, period)
+                            self._fetch_and_cache_data(symbol, period, force_refresh=False)
                         else:
                             logger.debug(f"No refresh needed for {symbol} - data is current")
                 
