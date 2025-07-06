@@ -36,6 +36,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
@@ -43,11 +44,14 @@ from typing import Dict, List, Optional, Tuple, NamedTuple
 from enum import Enum
 import pandas as pd
 import numpy as np
-from itertools import product
 
 from data_cache import DataCache
 from regime_detection import RegimeDetector, RegimeData
 from trade_setups import SetupManager, SetupType, TradeSignal, SignalStrength
+from backtest_config import BacktestConfiguration, load_config
+from parameter_optimizer import ParameterOptimizer, OptimizationParameters
+from regime_validator import RegimeValidator
+from trade_manager import TradeManager, BacktestTrade
 
 
 class TradeStatus(Enum):
@@ -58,42 +62,10 @@ class TradeStatus(Enum):
     CLOSED_TARGET = "closed_target"
 
 
-@dataclass
-class BacktestTrade:
-    """Individual trade record for backtesting."""
-    trade_id: int
-    symbol: str
-    setup_type: SetupType
-    entry_date: datetime
-    entry_price: float
-    position_size: float
-    stop_loss: float
-    target_price: float
-    risk_per_share: float
-    confidence: float
-    regime_at_entry: RegimeData
-    
-    # Exit information
-    exit_date: Optional[datetime] = None
-    exit_price: Optional[float] = None
-    status: TradeStatus = TradeStatus.OPEN
-    r_multiple: Optional[float] = None
-    pnl: Optional[float] = None
-    days_held: Optional[int] = None
-    
-    # Professional metrics tracking
-    mae: float = 0.0  # Maximum Adverse Excursion
-    mfe: float = 0.0  # Maximum Favorable Excursion
+# BacktestTrade class now imported from trade_manager module
 
 
-@dataclass
-class OptimizationParameters:
-    """Parameters to optimize during walk-forward validation."""
-    stop_loss_pct: float = 0.05  # 5% stop loss
-    profit_target_r: float = 2.0  # 2R profit target
-    confidence_threshold: float = 0.6  # Minimum confidence for signals
-    max_holding_days: int = 60  # Maximum days to hold position
-    position_size_method: str = "fixed_risk"  # fixed_risk, kelly, equal_weight
+# OptimizationParameters now imported from parameter_optimizer module
 
 
 @dataclass
@@ -154,31 +126,73 @@ class PerformanceMetrics:
 class BacktestEngine:
     """Walk-forward backtesting engine with regime analysis."""
     
-    def __init__(self, db_path: str = "journal.db", initial_capital: float = 100000):
+    def __init__(self, db_path: str = "journal.db", config: Optional[BacktestConfiguration] = None):
+        """
+        Initialize BacktestEngine with configuration.
+        
+        Args:
+            db_path: Path to SQLite database
+            config: BacktestConfiguration instance (uses default if None)
+        """
         self.db_path = db_path
-        self.initial_capital = initial_capital
+        
+        # Load configuration
+        self.config = config if config is not None else BacktestConfiguration.default()
+        
+        # Setup logging
+        self.logger = self.config.setup_logging()
+        self.logger.info(f"Initializing BacktestEngine with config: {self.config.config_name}")
+        
+        # Validate configuration
+        if not self.config.is_valid():
+            validation_summary = self.config.get_validation_summary()
+            self.logger.error(f"Invalid configuration: {validation_summary}")
+            raise ValueError(f"Invalid configuration: {validation_summary}")
+        
+        # Initialize core components
         self.data_cache = DataCache(db_path)
         self.regime_detector = RegimeDetector(db_path)
         self.setup_manager = SetupManager(db_path)
+        self.parameter_optimizer = ParameterOptimizer(self.config)
+        self.regime_validator = RegimeValidator(self.config)
         
-        # Risk management parameters (optimized for ETF diversification)
-        self.max_risk_per_trade = 0.02  # 2% per trade
-        self.max_concurrent_positions = 6  # Increased from 4 for better ETF diversification
-        self.max_sector_allocation = 0.30  # 30% max in correlated sectors
-        self.max_similar_etfs = 2  # Max 2 ETFs from same category
+        # Initialize trade manager
+        self.trade_manager = TradeManager(
+            db_path=db_path,
+            data_cache=self.data_cache,
+            risk_config=self.config.risk_management,
+            optimization_config=self.config.optimization,
+            initial_capital=self.config.risk_management.initial_capital
+        )
         
-        # Trade tracking
-        self.trades: List[BacktestTrade] = []
-        self.current_positions: List[BacktestTrade] = []
-        self.trade_id_counter = 1
+        # Extract configuration values for backward compatibility
+        self.initial_capital = self.config.risk_management.initial_capital
+        self.max_risk_per_trade = self.config.risk_management.max_risk_per_trade
+        self.max_concurrent_positions = self.config.risk_management.max_concurrent_positions
+        self.max_sector_allocation = self.config.risk_management.max_sector_allocation
+        self.max_similar_etfs = self.config.risk_management.max_similar_etfs
         
         # Performance tracking
         self.daily_equity = []
         self.daily_dates = []
         
-        # Optimization parameters
-        self.current_params = OptimizationParameters()
+        # Create optimization parameters from config
+        self.current_params = OptimizationParameters(
+            stop_loss_pct=self.config.trading.default_stop_loss_pct,
+            profit_target_r=self.config.trading.default_profit_target_r,
+            confidence_threshold=self.config.trading.default_confidence_threshold,
+            max_holding_days=self.config.trading.max_holding_days,
+            position_size_method=self.config.risk_management.position_size_method
+        )
+        
+        # Link current parameters to trade manager
+        self.trade_manager.current_params = self.current_params
+        
         self.regime_performance_tracking = []
+        
+        self.logger.info(f"BacktestEngine initialized with {self.initial_capital:,.0f} initial capital")
+        self.logger.debug(f"Risk parameters: {self.max_risk_per_trade:.1%} per trade, "
+                         f"{self.max_concurrent_positions} max positions")
     
     def backtest_from_signals(self,
                              signals: List[TradeSignal],
@@ -198,8 +212,8 @@ class BacktestEngine:
         print(f"Backtesting {len(signals)} signals from {start_date.date()} to {end_date.date()}")
         
         # Initialize tracking
-        self.trades = []
-        self.current_positions = []
+        self.trade_manager.trades = []
+        self.trade_manager.current_positions = []
         self.trade_id_counter = 1
         self.daily_equity = [self.initial_capital]
         self.daily_dates = []
@@ -223,16 +237,16 @@ class BacktestEngine:
             self._update_positions(current_date)
             
             # Look for entry opportunities from provided signals
-            if len(self.current_positions) < self.max_concurrent_positions:
+            if len(self.trade_manager.current_positions) < self.max_concurrent_positions:
                 available_signals = self._get_signals_for_date_from_provided(
                     current_date, signal_map
                 )
                 
                 for signal in available_signals:
-                    if self._can_enter_trade(signal, current_date):
+                    if self.trade_manager.can_enter_trade(signal.symbol, signal.setup_type.value, current_date):
                         self._enter_trade(signal, current_date)
                         
-                        if len(self.current_positions) >= self.max_concurrent_positions:
+                        if len(self.trade_manager.current_positions) >= self.max_concurrent_positions:
                             break
             
             # Calculate daily equity
@@ -244,7 +258,7 @@ class BacktestEngine:
         
         return {
             'performance': performance,
-            'trades': [asdict(trade) for trade in self.trades],
+            'trades': [asdict(trade) for trade in self.trade_manager.trades],
             'signals_tested': len(signals),
             'unique_symbols': len(set(s.symbol for s in signals)),
             'setups_tested': list(set(s.setup_type.value for s in signals)),
@@ -293,20 +307,28 @@ class BacktestEngine:
         Returns:
             Dictionary with backtest results
         """
-        print(f"Starting backtest from {start_date.date()} to {end_date.date()}")
+        self.logger.info(f"Starting backtest from {start_date.date()} to {end_date.date()}")
         
         if setup_types is None:
             setup_types = list(SetupType)
         
+        self.logger.info(f"Backtest configuration: setups={[s.value for s in setup_types]}, "
+                        f"walk_forward={walk_forward}, regime_aware={regime_aware}")
+        if selected_instruments:
+            self.logger.info(f"Selected instruments: {selected_instruments}")
+        if instrument_types:
+            self.logger.info(f"Instrument types filter: {instrument_types}")
+        
         # Initialize tracking variables
-        self.trades = []
-        self.current_positions = []
+        self.trade_manager.trades = []
+        self.trade_manager.current_positions = []
         self.trade_id_counter = 1
         self.daily_equity = [self.initial_capital]
         self.daily_dates = []
         
         # Get trading days
         trading_days = self._get_trading_days(start_date, end_date)
+        self.logger.info(f"Generated {len(trading_days)} trading days for backtest period")
         
         if walk_forward:
             return self._run_walk_forward_backtest(
@@ -332,14 +354,14 @@ class BacktestEngine:
             self._update_positions(current_date)
             
             # Look for new trade opportunities
-            if len(self.current_positions) < self.max_concurrent_positions:
+            if len(self.trade_manager.current_positions) < self.max_concurrent_positions:
                 signals = self._get_signals_for_date(current_date, setup_types, regime_aware, instrument_types, selected_instruments)
                 
                 for signal in signals:
-                    if self._can_enter_trade(signal, current_date):
+                    if self.trade_manager.can_enter_trade(signal.symbol, signal.setup_type.value, current_date):
                         self._enter_trade(signal, current_date)
                         
-                        if len(self.current_positions) >= self.max_concurrent_positions:
+                        if len(self.trade_manager.current_positions) >= self.max_concurrent_positions:
                             break
             
             # Calculate daily equity
@@ -351,7 +373,7 @@ class BacktestEngine:
         
         return {
             'performance': performance,
-            'trades': [asdict(trade) for trade in self.trades],
+            'trades': [asdict(trade) for trade in self.trade_manager.trades],
             'daily_equity': self.daily_equity,
             'daily_dates': [d.isoformat() for d in self.daily_dates]
         }
@@ -390,7 +412,13 @@ class BacktestEngine:
             # Optimize parameters on training data
             if training_days:
                 print(f"  Optimizing on training data: {training_days[0].date()} to {training_days[-1].date()}")
-                optimal_params = self._optimize_parameters(training_days, setup_types, regime_aware, selected_instruments)
+                optimal_params = self.parameter_optimizer.optimize_parameters(
+                    training_days=training_days,
+                    setup_types=setup_types,
+                    regime_aware=regime_aware,
+                    selected_instruments=selected_instruments,
+                    backtest_runner=self._evaluate_parameters
+                )
                 optimization_history.append({
                     'period': f"{training_days[0].date()}_{training_days[-1].date()}",
                     'optimal_params': asdict(optimal_params)
@@ -508,15 +536,15 @@ class BacktestEngine:
                         signals.append(signal)
                         
                     except (ValueError, KeyError) as e:
-                        print(f"Error parsing row: {row}, Error: {e}")
+                        self.logger.warning(f"Error parsing CSV row: {row}, Error: {e}")
                         continue
                         
         except FileNotFoundError:
-            print(f"CSV file not found: {csv_file}")
+            self.logger.error(f"CSV file not found: {csv_file}")
         except Exception as e:
-            print(f"Error loading signals from CSV: {e}")
+            self.logger.error(f"Error loading signals from CSV: {e}")
         
-        print(f"Loaded {len(signals)} signals from {csv_file}")
+        self.logger.info(f"Loaded {len(signals)} signals from {csv_file}")
         return signals
 
     def _get_signals_for_date(self, 
@@ -525,138 +553,126 @@ class BacktestEngine:
                              regime_aware: bool,
                              instrument_types: Optional[List[str]] = None,
                              selected_instruments: Optional[List[str]] = None) -> List[TradeSignal]:
-        """Get trade signals for a specific date."""
+        """
+        Get trade signals for a specific date.
+        
+        Args:
+            current_date: Date to scan for signals
+            setup_types: List of setup types to use
+            regime_aware: Whether to apply regime filtering
+            instrument_types: Filter by instrument types (ETF, stock, etc.)
+            selected_instruments: Filter by specific symbols
+            
+        Returns:
+            List of TradeSignal objects for the date
+        """
+        self.logger.debug(f"Getting signals for {current_date.date()}")
+        self.logger.debug(f"Setup types: {[s.value for s in setup_types]}")
+        self.logger.debug(f"Instrument types filter: {instrument_types}")
+        self.logger.debug(f"Selected instruments: {selected_instruments}")
         
         # Get symbols from setup manager with instrument type filtering
-        symbols = self.setup_manager.get_all_symbols(instrument_types)
+        all_symbols = self.setup_manager.get_all_symbols(instrument_types)
+        self.logger.debug(f"Found {len(all_symbols)} symbols from setup manager: {all_symbols[:10]}...")
         
         # Apply selected instruments filter for performance optimization
         if selected_instruments:
-            symbols = [s for s in symbols if s in selected_instruments]
-            print(f"  Filtering to {len(symbols)} selected instruments: {selected_instruments}")
+            # Normalize symbols for comparison (strip whitespace, uppercase)
+            normalized_selected = [s.strip().upper() for s in selected_instruments]
+            normalized_all = [s.strip().upper() for s in all_symbols]
+            
+            # Create mapping for case-insensitive matching
+            symbol_map = {norm: orig for norm, orig in zip(normalized_all, all_symbols)}
+            
+            # Find matches
+            matched_symbols = []
+            unmatched_instruments = []
+            
+            for selected in normalized_selected:
+                if selected in symbol_map:
+                    matched_symbols.append(symbol_map[selected])
+                else:
+                    unmatched_instruments.append(selected)
+            
+            symbols = matched_symbols
+            
+            self.logger.info(f"Filtering to {len(symbols)} selected instruments from {len(selected_instruments)} requested")
+            if self.config.debug.verbose_trade_decisions:
+                self.logger.debug(f"Matched symbols: {symbols}")
+                if unmatched_instruments:
+                    self.logger.warning(f"Unmatched selected instruments: {unmatched_instruments}")
+                    self.logger.debug(f"Available symbols sample: {all_symbols[:20]}")
+        else:
+            symbols = all_symbols
+            self.logger.debug(f"Using all {len(symbols)} available symbols")
         
         # Early exit if no symbols to process
         if not symbols:
+            self.logger.warning(f"No symbols available for processing on {current_date.date()}")
+            if selected_instruments:
+                self.logger.error(f"Selected instruments filtering resulted in 0 symbols. "
+                                f"Requested: {selected_instruments}, Available: {all_symbols[:10]}...")
             return []
         
         # Get current regime if regime-aware
         current_regime = None
         if regime_aware:
             current_regime = self.regime_detector.detect_current_regime()
+            if self.config.debug.verbose_regime_filtering:
+                self.logger.debug(f"Current regime: VIX={current_regime.vix_level:.1f}, "
+                                f"SPY vs SMA200={current_regime.spy_vs_sma200:.2%}")
         
         # Scan for signals using each setup
         all_signals = []
         for setup_type in setup_types:
             try:
+                self.logger.debug(f"Scanning {setup_type.value} setup with {len(symbols)} symbols")
                 setup = self.setup_manager.setups[setup_type]
                 signals = setup.scan_for_signals(symbols)
                 
+                initial_signal_count = len(signals)
+                self.logger.debug(f"{setup_type.value} found {initial_signal_count} initial signals")
+                
                 # Filter by regime if enabled
                 if regime_aware and current_regime:
-                    signals = [s for s in signals if self._validate_regime_signal(s, current_regime)]
+                    pre_filter_count = len(signals)
+                    signals = self.regime_validator.filter_signals_by_regime(signals, current_regime)
+                    filtered_count = len(signals)
+                    
+                    if self.config.debug.verbose_regime_filtering:
+                        self.logger.debug(f"{setup_type.value} regime filtering: "
+                                        f"{pre_filter_count} -> {filtered_count} signals")
                 
                 all_signals.extend(signals)
+                self.logger.debug(f"{setup_type.value} contributed {len(signals)} signals")
+                
             except Exception as e:
-                print(f"Error scanning {setup_type}: {e}")
+                self.logger.error(f"Error scanning {setup_type.value}: {e}")
                 continue
         
         # Sort by confidence and return top signals
+        max_signals = self.config.trading.max_signals_per_day
         all_signals.sort(key=lambda x: x.confidence, reverse=True)
-        return all_signals[:5]  # Limit to top 5 signals per day
-    
-    def _can_enter_trade(self, signal: TradeSignal, current_date: datetime) -> bool:
-        """Check if we can enter a new trade based on enhanced risk management rules."""
+        top_signals = all_signals[:max_signals]
         
-        # Check position limits
-        if len(self.current_positions) >= self.max_concurrent_positions:
-            return False
+        self.logger.info(f"Generated {len(top_signals)} signals from {len(all_signals)} total on {current_date.date()}")
+        if self.config.debug.verbose_trade_decisions and top_signals:
+            for i, signal in enumerate(top_signals):
+                self.logger.debug(f"Signal {i+1}: {signal.symbol} {signal.setup_type.value} "
+                                f"(conf: {signal.confidence:.2f})")
         
-        # Check if already holding this symbol
-        if any(pos.symbol == signal.symbol for pos in self.current_positions):
-            return False
-        
-        # Enhanced sector correlation checking
-        if not self._check_sector_allocation(signal.symbol):
-            return False
-        
-        # Check portfolio heat (total risk exposure)
-        if not self._check_portfolio_heat(signal):
-            return False
-        
-        return True
+        return top_signals
     
-    def _check_sector_allocation(self, symbol: str) -> bool:
-        """Check if adding this symbol would violate sector allocation limits."""
-        try:
-            # Get sector for the new symbol
-            new_sector = self._get_symbol_sector(symbol)
-            if new_sector == "Unknown":
-                return True  # Allow unknown sectors
-            
-            # Count current positions in same sector
-            sector_positions = 0
-            for pos in self.current_positions:
-                pos_sector = self._get_symbol_sector(pos.symbol)
-                if pos_sector == new_sector:
-                    sector_positions += 1
-            
-            # Check if we'd exceed max similar ETFs
-            return sector_positions < self.max_similar_etfs
-            
-        except Exception:
-            return True  # Allow trade if sector check fails
-    
-    def _check_portfolio_heat(self, signal: TradeSignal) -> bool:
-        """Check if total portfolio risk exposure is within limits."""
-        try:
-            # Calculate current total risk exposure
-            current_equity = self.daily_equity[-1] if self.daily_equity else self.initial_capital
-            total_current_risk = 0
-            
-            for pos in self.current_positions:
-                position_risk = pos.position_size * pos.risk_per_share
-                total_current_risk += position_risk
-            
-            # Calculate risk for new position
-            new_position_risk = current_equity * self.max_risk_per_trade
-            
-            # Check if total risk would exceed 8% of capital (4 positions * 2% each)
-            max_total_risk = current_equity * 0.08
-            
-            return (total_current_risk + new_position_risk) <= max_total_risk
-            
-        except Exception:
-            return True  # Allow trade if heat check fails
-    
-    def _get_symbol_sector(self, symbol: str) -> str:
-        """Get sector for a symbol from database."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute("SELECT sector, theme FROM instruments WHERE symbol = ?", (symbol,))
-                result = cursor.fetchone()
-                
-                if result and result[0]:
-                    return result[0]
-                elif result and result[1]:
-                    return result[1]
-                
-                return "Unknown"
-        except Exception:
-            return "Unknown"
-    
-    def _is_stock(self, symbol: str) -> bool:
-        """Check if symbol is an individual stock."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute("SELECT type FROM instruments WHERE symbol = ?", (symbol,))
-                result = cursor.fetchone()
-                return result and result[0] == 'Stock'
-        except Exception:
-            return False
+    # Trade management methods now handled by TradeManager component
     
     def _enter_trade(self, signal: TradeSignal, entry_date: datetime):
-        """Enter a new trade position using optimized parameters."""
+        """
+        Enter a new trade position using optimized parameters.
         
+        Args:
+            signal: TradeSignal object with entry details
+            entry_date: Date of trade entry
+        """
         # Calculate position size based on risk
         current_capital = self.daily_equity[-1] if self.daily_equity else self.initial_capital
         max_risk_amount = current_capital * self.max_risk_per_trade
@@ -669,6 +685,13 @@ class BacktestEngine:
         # Calculate position size based on optimized stop loss using dynamic equity
         risk_per_share = entry_price - optimized_stop_loss
         position_size = max_risk_amount / risk_per_share if risk_per_share > 0 else signal.position_size
+        
+        # Log trade entry details
+        self.logger.info(f"Entering {signal.setup_type.value} trade: {signal.symbol} @ ${entry_price:.2f}")
+        self.logger.debug(f"Trade details: stop=${optimized_stop_loss:.2f}, target=${optimized_target:.2f}, "
+                         f"size={position_size:.0f}, risk=${max_risk_amount:.0f}")
+        self.logger.debug(f"Position {len(self.trade_manager.current_positions)+1}/{self.max_concurrent_positions}, "
+                         f"confidence={signal.confidence:.2f}")
         
         # Create trade record with optimized parameters
         trade = BacktestTrade(
@@ -685,17 +708,15 @@ class BacktestEngine:
             regime_at_entry=signal.regime_context
         )
         
-        self.current_positions.append(trade)
+        self.trade_manager.current_positions.append(trade)
         self.trade_id_counter += 1
-        
-        print(f"Entered {signal.setup_type.value} trade: {signal.symbol} @ ${entry_price:.2f} (stop: ${optimized_stop_loss:.2f}, target: ${optimized_target:.2f})")
     
     def _update_positions(self, current_date: datetime):
         """Update all open positions and check for exits."""
         
         positions_to_close = []
         
-        for position in self.current_positions:
+        for position in self.trade_manager.current_positions:
             # Get current price
             try:
                 current_price = self._get_price_for_date(position.symbol, current_date)
@@ -740,12 +761,12 @@ class BacktestEngine:
                     positions_to_close.append(position)
                 
             except Exception as e:
-                print(f"Error updating position {position.symbol}: {e}")
+                self.logger.error(f"Error updating position {position.symbol}: {e}")
                 continue
         
         # Remove closed positions
         for position in positions_to_close:
-            self.current_positions.remove(position)
+            self.trade_manager.current_positions.remove(position)
     
     def _close_position(self, 
                        position: BacktestTrade,
@@ -770,10 +791,13 @@ class BacktestEngine:
         else:
             position.r_multiple = 0
         
-        self.trades.append(position)
+        self.trade_manager.trades.append(position)
         
-        print(f"Closed {position.symbol}: ${position.entry_price:.2f} -> ${exit_price:.2f} "
-              f"(R: {position.r_multiple:.2f}, P&L: ${position.pnl:.2f})")
+        # Log trade exit details
+        self.logger.info(f"Closed {position.symbol}: ${position.entry_price:.2f} -> ${exit_price:.2f} "
+                        f"(R: {position.r_multiple:.2f}, P&L: ${position.pnl:.2f})")
+        self.logger.debug(f"Exit reason: {exit_reason.value}, Days held: {position.days_held}, "
+                         f"MAE: {position.mae:.1f}%, MFE: {position.mfe:.1f}%")
     
     def _get_price_for_date(self, symbol: str, date: datetime) -> Optional[float]:
         """Get price for a symbol on a specific date."""
@@ -800,11 +824,11 @@ class BacktestEngine:
         cash = self.initial_capital
         
         # Subtract cost of all trades
-        for trade in self.trades:
+        for trade in self.trade_manager.trades:
             cash += trade.pnl or 0
         
         # Add unrealized P&L from open positions
-        for position in self.current_positions:
+        for position in self.trade_manager.current_positions:
             current_price = self._get_price_for_date(position.symbol, current_date)
             if current_price:
                 unrealized_pnl = position.position_size * (current_price - position.entry_price)
@@ -815,7 +839,7 @@ class BacktestEngine:
     def _calculate_performance_metrics(self) -> PerformanceMetrics:
         """Calculate comprehensive performance metrics."""
         
-        if not self.trades:
+        if not self.trade_manager.trades:
             return PerformanceMetrics(
                 total_trades=0, winning_trades=0, losing_trades=0,
                 win_rate=0, avg_r_multiple=0, total_return=0,
@@ -830,17 +854,17 @@ class BacktestEngine:
             )
         
         # Basic trade statistics
-        total_trades = len(self.trades)
-        winning_trades = len([t for t in self.trades if (t.pnl or 0) > 0])
+        total_trades = len(self.trade_manager.trades)
+        winning_trades = len([t for t in self.trade_manager.trades if (t.pnl or 0) > 0])
         losing_trades = total_trades - winning_trades
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
         
         # R-multiple analysis
-        r_multiples = [t.r_multiple for t in self.trades if t.r_multiple is not None]
+        r_multiples = [t.r_multiple for t in self.trade_manager.trades if t.r_multiple is not None]
         avg_r_multiple = np.mean(r_multiples) if r_multiples else 0
         
         # Return calculations
-        total_pnl = sum(t.pnl for t in self.trades if t.pnl is not None)
+        total_pnl = sum(t.pnl for t in self.trade_manager.trades if t.pnl is not None)
         total_return = total_pnl / self.initial_capital if self.initial_capital > 0 else 0
         
         # Drawdown calculation
@@ -870,10 +894,10 @@ class BacktestEngine:
         calmar_ratio = (total_return * 100) / (abs(max_drawdown) * 100) if max_drawdown != 0 else 0
         
         # Other metrics
-        days_held = [t.days_held for t in self.trades if t.days_held is not None]
+        days_held = [t.days_held for t in self.trade_manager.trades if t.days_held is not None]
         avg_days_held = np.mean(days_held) if days_held else 0
         
-        pnls = [t.pnl for t in self.trades if t.pnl is not None]
+        pnls = [t.pnl for t in self.trade_manager.trades if t.pnl is not None]
         largest_winner = max(pnls) if pnls else 0
         largest_loser = min(pnls) if pnls else 0
         
@@ -886,24 +910,24 @@ class BacktestEngine:
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
         
         # Calculate instrument type breakdown
-        etf_trades = sum(1 for t in self.trades if not self._is_stock(t.symbol))
-        stock_trades = sum(1 for t in self.trades if self._is_stock(t.symbol))
+        etf_trades = sum(1 for t in self.trade_manager.trades if not self._is_stock(t.symbol))
+        stock_trades = sum(1 for t in self.trade_manager.trades if self._is_stock(t.symbol))
         
-        etf_wins = sum(1 for t in self.trades if not self._is_stock(t.symbol) and (t.pnl or 0) > 0)
-        stock_wins = sum(1 for t in self.trades if self._is_stock(t.symbol) and (t.pnl or 0) > 0)
+        etf_wins = sum(1 for t in self.trade_manager.trades if not self._is_stock(t.symbol) and (t.pnl or 0) > 0)
+        stock_wins = sum(1 for t in self.trade_manager.trades if self._is_stock(t.symbol) and (t.pnl or 0) > 0)
         
         etf_win_rate = etf_wins / etf_trades if etf_trades > 0 else 0
         stock_win_rate = stock_wins / stock_trades if stock_trades > 0 else 0
         
-        etf_r_multiples = [t.r_multiple for t in self.trades if not self._is_stock(t.symbol) and t.r_multiple is not None]
-        stock_r_multiples = [t.r_multiple for t in self.trades if self._is_stock(t.symbol) and t.r_multiple is not None]
+        etf_r_multiples = [t.r_multiple for t in self.trade_manager.trades if not self._is_stock(t.symbol) and t.r_multiple is not None]
+        stock_r_multiples = [t.r_multiple for t in self.trade_manager.trades if self._is_stock(t.symbol) and t.r_multiple is not None]
         
         etf_avg_r = np.mean(etf_r_multiples) if etf_r_multiples else 0
         stock_avg_r = np.mean(stock_r_multiples) if stock_r_multiples else 0
         
-        etf_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trades 
+        etf_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trade_manager.trades 
                       if not self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
-        stock_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trades 
+        stock_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trade_manager.trades 
                         if self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
         
         etf_avg_return = np.mean(etf_returns) if etf_returns else 0
@@ -933,8 +957,8 @@ class BacktestEngine:
             sortino_ratio = 0
         
         # Calculate MAE and MFE metrics
-        mae_values = [t.mae for t in self.trades if t.mae != 0]
-        mfe_values = [t.mfe for t in self.trades if t.mfe != 0]
+        mae_values = [t.mae for t in self.trade_manager.trades if t.mae != 0]
+        mfe_values = [t.mfe for t in self.trade_manager.trades if t.mfe != 0]
         
         max_adverse_excursion = max(mae_values) if mae_values else 0
         max_favorable_excursion = max(mfe_values) if mfe_values else 0
@@ -1024,7 +1048,7 @@ class BacktestEngine:
     
     def _calculate_consecutive_streaks(self) -> Tuple[int, int]:
         """Calculate maximum consecutive wins and losses."""
-        if not self.trades:
+        if not self.trade_manager.trades:
             return 0, 0
         
         current_wins = 0
@@ -1032,7 +1056,7 @@ class BacktestEngine:
         max_wins = 0
         max_losses = 0
         
-        for trade in self.trades:
+        for trade in self.trade_manager.trades:
             if (trade.pnl or 0) > 0:
                 current_wins += 1
                 current_losses = 0
@@ -1059,77 +1083,7 @@ class BacktestEngine:
         return trading_days
     
     
-    def _validate_regime_signal(self, signal: TradeSignal, current_regime: RegimeData) -> bool:
-        """Enhanced regime validation for setup appropriateness."""
-        
-        # Volatility-based filtering
-        vix_level = current_regime.vix_level
-        
-        # High volatility regime (VIX > 30) - avoid momentum strategies
-        if vix_level > 30:
-            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION, 
-                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
-                return False
-        
-        # Low volatility regime (VIX < 20) - favor specific setups
-        elif vix_level < 20:
-            if signal.setup_type == SetupType.VOLATILITY_CONTRACTION:
-                return True  # Strong preference for vol contraction in low vol
-        
-        # Trend-based filtering
-        spy_trend = current_regime.spy_vs_sma200
-        
-        # Strong uptrend - avoid mean reversion, favor momentum
-        if spy_trend > 0.10:  # SPY > 10% above SMA200
-            if signal.setup_type == SetupType.OVERSOLD_MEAN_REVERSION:
-                return False
-            if signal.setup_type in [SetupType.TREND_PULLBACK, 
-                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
-                return True
-        
-        # Strong downtrend - favor mean reversion, avoid momentum
-        elif spy_trend < -0.10:  # SPY > 10% below SMA200
-            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
-                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
-                return False
-            if signal.setup_type in [SetupType.OVERSOLD_MEAN_REVERSION,
-                                   SetupType.GAP_FILL_REVERSAL]:
-                return True
-        
-        # Risk sentiment filtering
-        risk_ratio = current_regime.risk_on_off_ratio
-        
-        # Risk-off environment - favor defensive setups
-        if risk_ratio < 0.95:
-            if signal.setup_type == SetupType.DIVIDEND_DISTRIBUTION_PLAY:
-                return True  # Favor dividend plays in risk-off
-            if signal.setup_type == SetupType.RELATIVE_STRENGTH_MOMENTUM:
-                return False  # Avoid momentum in risk-off
-        
-        # Risk-on environment - favor growth setups
-        elif risk_ratio > 1.05:
-            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
-                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
-                return True
-        
-        # Sector rotation consideration
-        growth_value_ratio = current_regime.growth_value_ratio
-        
-        # Growth outperforming - favor tech/growth oriented setups
-        if growth_value_ratio > 1.10:
-            # Would need ETF sector mapping for full implementation
-            # For now, accept most momentum setups
-            if signal.setup_type in [SetupType.BREAKOUT_CONTINUATION,
-                                   SetupType.RELATIVE_STRENGTH_MOMENTUM]:
-                return True
-        
-        # Value outperforming - favor defensive setups
-        elif growth_value_ratio < 0.90:
-            if signal.setup_type in [SetupType.DIVIDEND_DISTRIBUTION_PLAY,
-                                   SetupType.OVERSOLD_MEAN_REVERSION]:
-                return True
-        
-        return True  # Default to accepting signal if no specific rules apply
+    # _validate_regime_signal method removed - now handled by RegimeValidator class
     
     def _combine_walk_forward_results(self, results: List[Dict]) -> PerformanceMetrics:
         """Combine multiple walk-forward period results."""
@@ -1150,63 +1104,25 @@ class BacktestEngine:
                 all_equity = result['daily_equity']
         
         # Recalculate combined metrics
-        self.trades = [BacktestTrade(**trade) for trade in all_trades]
+        self.trade_manager.trades = [BacktestTrade(**trade) for trade in all_trades]
         self.daily_equity = all_equity
         
         return self._calculate_performance_metrics()
     
-    def _optimize_parameters(self, 
-                           training_days: List[datetime],
-                           setup_types: List[SetupType],
-                           regime_aware: bool,
-                           selected_instruments: Optional[List[str]] = None) -> OptimizationParameters:
-        """Optimize parameters using grid search on training data."""
-        
-        # Parameter ranges to test
-        stop_loss_range = [0.03, 0.04, 0.05, 0.06, 0.08]  # 3-8%
-        profit_target_range = [1.5, 2.0, 2.5, 3.0]  # R multiples
-        confidence_range = [0.5, 0.6, 0.7, 0.8]  # Confidence thresholds
-        
-        best_params = OptimizationParameters()
-        best_score = float('-inf')
-        
-        print(f"    Testing {len(stop_loss_range) * len(profit_target_range) * len(confidence_range)} parameter combinations...")
-        
-        # Grid search over parameter combinations
-        for stop_loss, target_r, confidence in product(stop_loss_range, profit_target_range, confidence_range):
-            # Create test parameters
-            test_params = OptimizationParameters(
-                stop_loss_pct=stop_loss,
-                profit_target_r=target_r,
-                confidence_threshold=confidence
-            )
-            
-            # Backtest with these parameters
-            try:
-                score = self._evaluate_parameters(test_params, training_days, setup_types, regime_aware, selected_instruments)
-                
-                if score > best_score:
-                    best_score = score
-                    best_params = test_params
-            except Exception as e:
-                # Skip parameter combinations that cause errors
-                continue
-        
-        print(f"    Best parameters: stop_loss={best_params.stop_loss_pct:.1%}, target={best_params.profit_target_r:.1f}R, score={best_score:.3f}")
-        return best_params
+    # _optimize_parameters method removed - now handled by ParameterOptimizer class
     
     def _evaluate_parameters(self,
                            params: OptimizationParameters,
                            training_days: List[datetime],
                            setup_types: List[SetupType],
                            regime_aware: bool,
-                           selected_instruments: Optional[List[str]] = None) -> float:
-        """Evaluate parameter set and return fitness score."""
+                           selected_instruments: Optional[List[str]] = None) -> Dict:
+        """Evaluate parameter set and return backtest result."""
         
         # Save current state
         original_params = self.current_params
-        original_trades = self.trades.copy()
-        original_positions = self.current_positions.copy()
+        original_trades = self.trade_manager.trades.copy()
+        original_positions = self.trade_manager.current_positions.copy()
         original_counter = self.trade_id_counter
         original_equity = self.daily_equity.copy()
         original_dates = self.daily_dates.copy()
@@ -1214,8 +1130,8 @@ class BacktestEngine:
         try:
             # Apply test parameters
             self.current_params = params
-            self.trades = []
-            self.current_positions = []
+            self.trade_manager.trades = []
+            self.trade_manager.current_positions = []
             self.trade_id_counter = 1
             self.daily_equity = [self.initial_capital]
             self.daily_dates = []
@@ -1225,38 +1141,36 @@ class BacktestEngine:
                 self.daily_dates.append(current_date)
                 self._update_positions(current_date)
                 
-                if len(self.current_positions) < self.max_concurrent_positions:
+                if len(self.trade_manager.current_positions) < self.max_concurrent_positions:
                     signals = self._get_signals_for_date(current_date, setup_types, regime_aware, None, selected_instruments)
                     
                     # Filter by confidence threshold
                     signals = [s for s in signals if s.confidence >= params.confidence_threshold]
                     
                     for signal in signals:
-                        if self._can_enter_trade(signal, current_date):
+                        if self.trade_manager.can_enter_trade(signal.symbol, signal.setup_type.value, current_date):
                             self._enter_trade(signal, current_date)
-                            if len(self.current_positions) >= self.max_concurrent_positions:
+                            if len(self.trade_manager.current_positions) >= self.max_concurrent_positions:
                                 break
                 
                 current_equity = self._calculate_current_equity(current_date)
                 self.daily_equity.append(current_equity)
             
-            # Calculate fitness score (Sharpe ratio with penalty for excessive trades)
-            if len(self.trades) < 3:  # Minimum trades required
-                return float('-inf')
+            # Return backtest result for parameter optimization
+            performance = self._calculate_performance_metrics()
             
-            perf = self._calculate_performance_metrics()
-            
-            # Fitness function: Sharpe ratio adjusted for trade frequency
-            trade_frequency_penalty = max(0, (len(self.trades) - 50) * 0.01)  # Penalize >50 trades
-            fitness_score = perf.sharpe_ratio - trade_frequency_penalty
-            
-            return fitness_score
+            return {
+                'performance': performance,
+                'trades': [asdict(trade) for trade in self.trade_manager.trades],
+                'daily_equity': self.daily_equity,
+                'daily_dates': [d.isoformat() for d in self.daily_dates]
+            }
             
         finally:
             # Restore original state
             self.current_params = original_params
-            self.trades = original_trades
-            self.current_positions = original_positions
+            self.trade_manager.trades = original_trades
+            self.trade_manager.current_positions = original_positions
             self.trade_id_counter = original_counter
             self.daily_equity = original_equity
             self.daily_dates = original_dates
@@ -1264,7 +1178,7 @@ class BacktestEngine:
     def _calculate_regime_performance(self) -> RegimePerformance:
         """Calculate performance metrics broken down by market regime."""
         
-        if not self.trades:
+        if not self.trade_manager.trades:
             return RegimePerformance()
         
         # Group trades by regime characteristics
@@ -1277,7 +1191,7 @@ class BacktestEngine:
         risk_on_trades = []
         risk_off_trades = []
         
-        for trade in self.trades:
+        for trade in self.trade_manager.trades:
             if trade.regime_at_entry:
                 regime = trade.regime_at_entry
                 
@@ -1438,14 +1352,34 @@ Examples:
     parser.add_argument("--optimize", action="store_true",
                        help="Run parameter optimization (future enhancement)")
     
+    # Configuration options
+    parser.add_argument("--config", type=str,
+                       help="Path to configuration JSON file")
+    parser.add_argument("--preset", type=str,
+                       choices=['default', 'conservative', 'aggressive', 'debug'],
+                       help="Use configuration preset")
+    parser.add_argument("--debug", action="store_true",
+                       help="Enable debug mode with verbose logging")
+    
     args = parser.parse_args()
     
     # Parse dates
     start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
     end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
     
+    # Load configuration
+    config = None
+    if args.config:
+        config = load_config(config_path=args.config)
+    elif args.preset:
+        config = load_config(preset=args.preset)
+    elif args.debug:
+        config = load_config(preset='debug')
+    else:
+        config = load_config(preset='default')
+    
     # Initialize backtesting engine
-    engine = BacktestEngine()
+    engine = BacktestEngine(config=config)
     
     # Determine backtest method
     if args.csv_file:

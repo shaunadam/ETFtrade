@@ -1,0 +1,65 @@
+{
+  "risk_management": {
+    "max_risk_per_trade": 0.02,
+    "max_concurrent_positions": 2,
+    "max_sector_allocation": 0.3,
+    "max_similar_etfs": 2,
+    "initial_capital": 100000.0,
+    "position_size_method": "fixed_risk",
+    "min_position_size": 100.0,
+    "max_position_size": 10000.0,
+    "max_total_risk": 0.08,
+    "correlation_adjustment": true
+  },
+  "optimization": {
+    "stop_loss_range": [
+      0.05
+    ],
+    "profit_target_range": [
+      2.0
+    ],
+    "confidence_range": [
+      0.6
+    ],
+    "training_period_days": 60,
+    "test_period_days": 20,
+    "fitness_function": "sharpe_ratio",
+    "trade_frequency_penalty": 0.01,
+    "min_trades_required": 3
+  },
+  "trading": {
+    "default_stop_loss_pct": 0.05,
+    "default_profit_target_r": 2.0,
+    "default_confidence_threshold": 0.6,
+    "max_holding_days": 60,
+    "allow_same_day_entry_exit": false,
+    "require_confirmation": true,
+    "trailing_stop_enabled": true,
+    "trailing_stop_trigger": 1.0,
+    "regime_aware_trading": true,
+    "regime_override_confidence": 0.8,
+    "max_signals_per_day": 5,
+    "signal_strength_weight": 0.3,
+    "confidence_weight": 0.7
+  },
+  "debug": {
+    "logging_level": "DEBUG",
+    "log_to_file": true,
+    "log_file_path": "backtest_debug.log",
+    "log_to_console": true,
+    "enable_debug_mode": true,
+    "debug_max_trades": 10,
+    "debug_date_range_days": 30,
+    "verbose_optimization": true,
+    "verbose_trade_decisions": true,
+    "verbose_regime_filtering": true,
+    "verbose_performance_calc": false,
+    "validate_data_integrity": true,
+    "warn_missing_data": true,
+    "strict_date_validation": true
+  },
+  "config_name": "debug",
+  "config_version": "1.0",
+  "created_at": "2025-07-05T22:27:03.721339",
+  "description": "Debug configuration with extensive logging and limited scope for testing"
+}
