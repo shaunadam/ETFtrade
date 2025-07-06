@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import trade_setups
-from models import db, Instrument, Setup
+from flask_app.models import db, Instrument, Setup
 
 class ScreenerService:
     """Service for screening operations in Flask app"""

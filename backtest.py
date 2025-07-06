@@ -176,6 +176,12 @@ class BacktestEngine:
         self.daily_equity = []
         self.daily_dates = []
         
+        # Price data cache for optimized backtesting
+        self.price_data_cache = {}
+        
+        # Regime data cache for optimized backtesting
+        self.regime_data_cache = {}
+        
         # Create optimization parameters from config
         self.current_params = OptimizationParameters(
             stop_loss_pct=self.config.trading.default_stop_loss_pct,
@@ -347,15 +353,47 @@ class BacktestEngine:
                               selected_instruments: Optional[List[str]] = None) -> Dict:
         """Run standard backtesting without walk-forward validation."""
         
-        for current_date in trading_days:
+        # Phase 1 Optimization: Pre-compute symbol mapping to avoid repeated filtering
+        self.logger.info("Pre-computing symbol mapping for backtest...")
+        symbol_map = self._precompute_symbol_mapping(instrument_types, selected_instruments)
+        if not symbol_map:
+            self.logger.warning("No symbols available for backtesting")
+            return {'performance': None, 'trades': [], 'daily_equity': [], 'daily_dates': []}
+        
+        # Phase 1 Optimization: Pre-load all price data for backtest period
+        self.logger.info("Pre-loading price data for backtest period...")
+        self.price_data_cache = self._preload_price_data(symbol_map, trading_days)
+        
+        # Critical Optimization: Pre-load regime data to avoid excessive API calls
+        if regime_aware:
+            self.logger.info("Pre-loading regime data for backtest period...")
+            self.regime_data_cache = self._preload_regime_data(trading_days)
+        else:
+            self.regime_data_cache = {}
+        
+        self.logger.info(f"Pre-computed {len(symbol_map)} symbols and loaded price data for backtesting")
+        
+        # Phase 2 Optimization: Progress tracking
+        total_days = len(trading_days)
+        progress_interval = max(1, total_days // 20)  # Show progress every 5%
+        
+        for i, current_date in enumerate(trading_days):
             self.daily_dates.append(current_date)
+            
+            # Phase 2 Optimization: Progress reporting
+            if i % progress_interval == 0 or i == total_days - 1:
+                progress_pct = (i / total_days) * 100
+                self.logger.info(f"Backtest progress: {progress_pct:.1f}% ({i+1}/{total_days} days) - "
+                               f"Current date: {current_date.date()}, "
+                               f"Open positions: {len(self.trade_manager.current_positions)}, "
+                               f"Completed trades: {len(self.trade_manager.trades)}")
             
             # Update existing positions
             self._update_positions(current_date)
             
             # Look for new trade opportunities
             if len(self.trade_manager.current_positions) < self.max_concurrent_positions:
-                signals = self._get_signals_for_date(current_date, setup_types, regime_aware, instrument_types, selected_instruments)
+                signals = self._get_signals_for_date_optimized(current_date, setup_types, regime_aware, symbol_map)
                 
                 for signal in signals:
                     if self.trade_manager.can_enter_trade(signal.symbol, signal.setup_type.value, current_date):
@@ -670,6 +708,265 @@ class BacktestEngine:
         
         return top_signals
     
+    def _precompute_symbol_mapping(self, 
+                                  instrument_types: Optional[List[str]] = None,
+                                  selected_instruments: Optional[List[str]] = None) -> List[str]:
+        """Pre-compute symbol mapping to avoid repeated filtering during backtest."""
+        
+        # Get symbols from setup manager with instrument type filtering
+        search_instrument_types = instrument_types
+        if selected_instruments and instrument_types is None:
+            search_instrument_types = ['ETF', 'ETN', 'Stock']
+        
+        all_symbols = self.setup_manager.get_all_symbols(search_instrument_types)
+        
+        # Apply selected instruments filter
+        if selected_instruments:
+            normalized_selected = [s.strip().upper() for s in selected_instruments]
+            normalized_all = [s.strip().upper() for s in all_symbols]
+            
+            # Create mapping for case-insensitive matching
+            symbol_map = {norm: orig for norm, orig in zip(normalized_all, all_symbols)}
+            
+            # Find matches
+            matched_symbols = []
+            for selected in normalized_selected:
+                if selected in symbol_map:
+                    matched_symbols.append(symbol_map[selected])
+            
+            return matched_symbols
+        else:
+            return all_symbols
+    
+    def _get_signals_for_date_optimized(self, 
+                                       current_date: datetime,
+                                       setup_types: List[SetupType],
+                                       regime_aware: bool,
+                                       symbols: List[str]) -> List[TradeSignal]:
+        """Optimized signal generation using pre-computed symbol mapping."""
+        
+        # Early exit if no symbols to process
+        if not symbols:
+            return []
+        
+        # Get current regime if regime-aware (use cached data ONLY)
+        current_regime = None
+        if regime_aware:
+            date_key = current_date.strftime('%Y-%m-%d')
+            current_regime = self.regime_data_cache.get(date_key)
+            
+            # If no cached regime data, log warning but continue without regime filtering
+            if current_regime is None:
+                self.logger.debug(f"No cached regime data for {date_key}, skipping regime filtering")
+        
+        # Scan for signals using each setup with pre-loaded data
+        all_signals = []
+        for setup_type in setup_types:
+            try:
+                setup = self.setup_manager.setups[setup_type]
+                # Pass pre-loaded price data and regime data to dramatically reduce database calls
+                signals = setup.scan_for_signals(symbols, preloaded_data=self.price_data_cache, current_regime=current_regime)
+                
+                # Filter by regime if enabled and regime data is available
+                if regime_aware and current_regime:
+                    pre_filter_count = len(signals)
+                    signals = self.regime_validator.filter_signals_by_regime(signals, current_regime)
+                    
+                    if self.config.debug.verbose_regime_filtering:
+                        self.logger.debug(f"{setup_type.value} regime filtering: "
+                                        f"{pre_filter_count} -> {len(signals)} signals")
+                
+                all_signals.extend(signals)
+                
+            except Exception as e:
+                self.logger.error(f"Error scanning {setup_type.value}: {e}")
+                continue
+        
+        # Sort by confidence and return top signals
+        max_signals = self.config.trading.max_signals_per_day
+        all_signals.sort(key=lambda x: x.confidence, reverse=True)
+        top_signals = all_signals[:max_signals]
+        
+        return top_signals
+    
+    def _preload_price_data(self, symbols: List[str], trading_days: List[datetime]) -> Dict[str, pd.DataFrame]:
+        """Pre-load all price data for symbols across the backtest period."""
+        
+        price_cache = {}
+        start_date = trading_days[0] - timedelta(days=250)  # Buffer for indicators (especially SMA200)
+        end_date = trading_days[-1] + timedelta(days=1)    # Include end date
+        
+        for symbol in symbols:
+            try:
+                # Get cached data for the symbol
+                data = self.data_cache.get_cached_data(symbol, "1y")
+                if data is not None and not data.empty:
+                    # Filter to backtest period with buffer
+                    mask = (data.index >= start_date.strftime('%Y-%m-%d')) & (data.index <= end_date.strftime('%Y-%m-%d'))
+                    filtered_data = data[mask]
+                    
+                    if not filtered_data.empty:
+                        price_cache[symbol] = filtered_data
+                        self.logger.debug(f"Loaded {len(filtered_data)} price records for {symbol}")
+                    else:
+                        self.logger.warning(f"No price data available for {symbol} in backtest period")
+                else:
+                    self.logger.warning(f"No cached data available for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error loading price data for {symbol}: {e}")
+                continue
+        
+        self.logger.info(f"Pre-loaded price data for {len(price_cache)} symbols")
+        return price_cache
+    
+    def _preload_regime_data(self, trading_days: List[datetime]) -> Dict[str, any]:
+        """Pre-load regime detection data to avoid repeated API calls."""
+        
+        try:
+            # Get historical regime data for the backtest period
+            start_date = trading_days[0]
+            end_date = trading_days[-1]
+            
+            # Get regime data for the entire period in one batch
+            regime_cache = {}
+            
+            # Load VIX data for the entire period (VIX data might not be cached)
+            vix_data = None
+            try:
+                vix_data = self.data_cache.get_cached_data('^VIX', '1y')
+            except:
+                # VIX data not available, will use defaults
+                pass
+            spy_data = self.data_cache.get_cached_data('SPY', '1y')
+            
+            # Get SPY 200-day SMA for trend analysis
+            spy_cached = spy_data
+            if spy_cached is not None:
+                spy_cached['SMA200'] = spy_cached['Close'].rolling(window=200).mean()
+            
+            # Get sector rotation data
+            qqq_data = self.data_cache.get_cached_data('QQQ', '1y')
+            iwm_data = self.data_cache.get_cached_data('IWM', '1y')
+            xlk_data = self.data_cache.get_cached_data('XLK', '1y')
+            xlf_data = self.data_cache.get_cached_data('XLF', '1y')
+            
+            # Calculate regime for each trading day
+            for day in trading_days:
+                date_key = day.strftime('%Y-%m-%d')
+                
+                try:
+                    # Get VIX level for the day
+                    vix_level = 20.0  # Default
+                    if vix_data is not None and not vix_data.empty and date_key in vix_data.index:
+                        vix_level = vix_data.loc[date_key, 'Close']
+                    
+                    # Get SPY vs SMA200 for trend regime
+                    spy_vs_sma200 = 0.0  # Default
+                    if spy_cached is not None and not spy_cached.empty and date_key in spy_cached.index:
+                        spy_price = spy_cached.loc[date_key, 'Close']
+                        spy_sma200 = spy_cached.loc[date_key, 'SMA200']
+                        if not pd.isna(spy_sma200) and spy_sma200 > 0:
+                            spy_vs_sma200 = (spy_price - spy_sma200) / spy_sma200
+                    
+                    # Calculate growth/value ratio
+                    growth_value_ratio = 1.0  # Default
+                    if (qqq_data is not None and not qqq_data.empty and 
+                        iwm_data is not None and not iwm_data.empty and 
+                        date_key in qqq_data.index and date_key in iwm_data.index):
+                        qqq_price = qqq_data.loc[date_key, 'Close']
+                        iwm_price = iwm_data.loc[date_key, 'Close']
+                        if iwm_price > 0:
+                            growth_value_ratio = qqq_price / iwm_price
+                    
+                    # Calculate risk-on/risk-off ratio
+                    risk_on_off_ratio = 1.0  # Default
+                    if (xlk_data is not None and not xlk_data.empty and 
+                        xlf_data is not None and not xlf_data.empty and 
+                        date_key in xlk_data.index and date_key in xlf_data.index):
+                        xlk_price = xlk_data.loc[date_key, 'Close']
+                        xlf_price = xlf_data.loc[date_key, 'Close']
+                        if xlf_price > 0:
+                            risk_on_off_ratio = xlk_price / xlf_price
+                    
+                    # Create regime data object with calculated values
+                    from regime_detection import RegimeData, VolatilityRegime, TrendRegime, SectorRotation, RiskSentiment
+                    
+                    # Determine regime categories
+                    if vix_level < 20:
+                        volatility_regime = VolatilityRegime.LOW
+                    elif vix_level > 30:
+                        volatility_regime = VolatilityRegime.HIGH
+                    else:
+                        volatility_regime = VolatilityRegime.MEDIUM
+                    
+                    if spy_vs_sma200 > 0.05:
+                        trend_regime = TrendRegime.STRONG_UPTREND
+                    elif spy_vs_sma200 > 0.00:
+                        trend_regime = TrendRegime.MILD_UPTREND
+                    elif spy_vs_sma200 > -0.05:
+                        trend_regime = TrendRegime.RANGING
+                    else:
+                        trend_regime = TrendRegime.DOWNTREND
+                    
+                    if growth_value_ratio > 1.02:
+                        sector_rotation = SectorRotation.GROWTH_FAVORED
+                    elif growth_value_ratio < 0.98:
+                        sector_rotation = SectorRotation.VALUE_FAVORED
+                    else:
+                        sector_rotation = SectorRotation.BALANCED
+                    
+                    if risk_on_off_ratio > 1.02:
+                        risk_sentiment = RiskSentiment.RISK_ON
+                    elif risk_on_off_ratio < 0.98:
+                        risk_sentiment = RiskSentiment.RISK_OFF
+                    else:
+                        risk_sentiment = RiskSentiment.NEUTRAL
+                    
+                    regime_data = RegimeData(
+                        date=day,
+                        volatility_regime=volatility_regime,
+                        trend_regime=trend_regime,
+                        sector_rotation=sector_rotation,
+                        risk_sentiment=risk_sentiment,
+                        vix_level=vix_level,
+                        spy_vs_sma200=spy_vs_sma200,
+                        growth_value_ratio=growth_value_ratio,
+                        risk_on_off_ratio=risk_on_off_ratio
+                    )
+                    
+                    regime_cache[date_key] = regime_data
+                    
+                except Exception as e:
+                    self.logger.debug(f"Error calculating regime for {date_key}: {e}")
+                    # Use fallback regime data
+                    regime_cache[date_key] = RegimeData(
+                        date=day,
+                        volatility_regime=VolatilityRegime.MEDIUM,
+                        trend_regime=TrendRegime.RANGING,
+                        sector_rotation=SectorRotation.BALANCED,
+                        risk_sentiment=RiskSentiment.NEUTRAL,
+                        vix_level=20.0,
+                        spy_vs_sma200=0.0,
+                        growth_value_ratio=1.0,
+                        risk_on_off_ratio=1.0
+                    )
+            
+            self.logger.info(f"Pre-loaded regime data for {len(trading_days)} trading days")
+            return regime_cache
+            
+        except Exception as e:
+            self.logger.error(f"Error pre-loading regime data: {e}")
+            return {}
+    
+    def _batch_get_prices_for_date(self, symbols: List[str], date: datetime) -> Dict[str, Optional[float]]:
+        """Get prices for multiple symbols on a specific date using batch optimization."""
+        prices = {}
+        
+        for symbol in symbols:
+            prices[symbol] = self._get_price_for_date(symbol, date)
+        
+        return prices
+    
     # Trade management methods now handled by TradeManager component
     
     def _enter_trade(self, signal: TradeSignal, entry_date: datetime):
@@ -695,8 +992,8 @@ class BacktestEngine:
         risk_per_share = entry_price - optimized_stop_loss
         position_size = max_risk_amount / risk_per_share if risk_per_share > 0 else signal.position_size
         
-        # Log trade entry details
-        self.logger.info(f"Entering {signal.setup_type.value} trade: {signal.symbol} @ ${entry_price:.2f}")
+        # Log trade entry details (reduced verbosity)
+        self.logger.debug(f"Entering {signal.setup_type.value} trade: {signal.symbol} @ ${entry_price:.2f}")
         self.logger.debug(f"Trade details: stop=${optimized_stop_loss:.2f}, target=${optimized_target:.2f}, "
                          f"size={position_size:.0f}, risk=${max_risk_amount:.0f}")
         self.logger.debug(f"Position {len(self.trade_manager.current_positions)+1}/{self.max_concurrent_positions}, "
@@ -719,14 +1016,22 @@ class BacktestEngine:
         self.trade_id_counter += 1
     
     def _update_positions(self, current_date: datetime):
-        """Update all open positions and check for exits."""
+        """Update all open positions and check for exits with batch optimizations."""
         
         positions_to_close = []
         
+        if not self.trade_manager.current_positions:
+            return
+        
+        # Phase 2 Optimization: Batch price lookups
+        position_prices = self._batch_get_prices_for_date(
+            [pos.symbol for pos in self.trade_manager.current_positions], 
+            current_date
+        )
+        
         for position in self.trade_manager.current_positions:
-            # Get current price
             try:
-                current_price = self._get_price_for_date(position.symbol, current_date)
+                current_price = position_prices.get(position.symbol)
                 if current_price is None:
                     continue
                 
@@ -801,16 +1106,29 @@ class BacktestEngine:
         
         self.trade_manager.trades.append(position)
         
-        # Log trade exit details
-        self.logger.info(f"Closed {position.symbol}: ${position.entry_price:.2f} -> ${exit_price:.2f} "
-                        f"(R: {position.r_multiple:.2f}, P&L: ${position.realized_pnl:.2f})")
+        # Log trade exit details (reduced verbosity)
+        self.logger.debug(f"Closed {position.symbol}: ${position.entry_price:.2f} -> ${exit_price:.2f} "
+                         f"(R: {position.r_multiple:.2f}, P&L: ${position.realized_pnl:.2f})")
         self.logger.debug(f"Exit reason: {exit_reason.value}, Days held: {days_held}, "
                          f"MAE: {position.mae:.1f}%, MFE: {position.mfe:.1f}%")
     
     def _get_price_for_date(self, symbol: str, date: datetime) -> Optional[float]:
-        """Get price for a symbol on a specific date."""
+        """Get price for a symbol on a specific date using pre-loaded cache."""
         try:
-            # Try to get from cache first
+            # Use pre-loaded cache if available
+            if hasattr(self, 'price_data_cache') and symbol in self.price_data_cache:
+                data = self.price_data_cache[symbol]
+                date_str = date.strftime('%Y-%m-%d')
+                
+                if date_str in data.index:
+                    return data.loc[date_str, 'Close']
+                else:
+                    # Find nearest date
+                    nearest_idx = data.index.get_indexer([date_str], method='nearest')[0]
+                    if nearest_idx >= 0 and nearest_idx < len(data):
+                        return data.iloc[nearest_idx]['Close']
+            
+            # Fallback to original cache method if pre-loaded cache not available
             data = self.data_cache.get_cached_data(symbol, "1y")
             if data is not None and not data.empty:
                 # Find closest date
@@ -827,7 +1145,7 @@ class BacktestEngine:
             return None
     
     def _calculate_current_equity(self, current_date: datetime) -> float:
-        """Calculate current total equity including open positions."""
+        """Calculate current total equity including open positions with batch optimization."""
         
         cash = self.initial_capital
         
@@ -835,12 +1153,18 @@ class BacktestEngine:
         for trade in self.trade_manager.trades:
             cash += trade.realized_pnl or 0
         
-        # Add unrealized P&L from open positions
-        for position in self.trade_manager.current_positions:
-            current_price = self._get_price_for_date(position.symbol, current_date)
-            if current_price:
-                unrealized_pnl = position.quantity * (current_price - position.entry_price)
-                cash += unrealized_pnl
+        # Add unrealized P&L from open positions using batch price lookup
+        if self.trade_manager.current_positions:
+            position_prices = self._batch_get_prices_for_date(
+                [pos.symbol for pos in self.trade_manager.current_positions], 
+                current_date
+            )
+            
+            for position in self.trade_manager.current_positions:
+                current_price = position_prices.get(position.symbol)
+                if current_price:
+                    unrealized_pnl = position.quantity * (current_price - position.entry_price)
+                    cash += unrealized_pnl
         
         return cash
     
@@ -981,15 +1305,15 @@ class BacktestEngine:
         # Try to get SPY benchmark data for comparison
         if len(self.daily_dates) > 1:
             try:
-                spy_data = self.data_cache.get_price_data('SPY', self.daily_dates[0], self.daily_dates[-1])
+                spy_data = self.data_cache.get_cached_data('SPY', '1y')
                 if spy_data is not None and len(spy_data) > 1:
-                    spy_start = spy_data['close'].iloc[0]
-                    spy_end = spy_data['close'].iloc[-1]
+                    spy_start = spy_data['Close'].iloc[0]
+                    spy_end = spy_data['Close'].iloc[-1]
                     benchmark_return = (spy_end - spy_start) / spy_start
                     
                     # Calculate tracking error and information ratio
                     if len(spy_data) > 1:
-                        spy_returns = spy_data['close'].pct_change().dropna()
+                        spy_returns = spy_data['Close'].pct_change().dropna()
                         
                         # Align portfolio and benchmark returns
                         if len(spy_returns) > 0 and len(returns_series) > 0:
@@ -1180,7 +1504,9 @@ class BacktestEngine:
                 self._update_positions(current_date)
                 
                 if len(self.trade_manager.current_positions) < self.max_concurrent_positions:
-                    signals = self._get_signals_for_date(current_date, setup_types, regime_aware, None, selected_instruments)
+                    # Use pre-computed symbol mapping for optimization
+                    symbol_map = self._precompute_symbol_mapping(None, selected_instruments)
+                    signals = self._get_signals_for_date_optimized(current_date, setup_types, regime_aware, symbol_map)
                     
                     # Filter by confidence threshold
                     signals = [s for s in signals if s.confidence >= params.confidence_threshold]

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from regime_detection import RegimeDetector
-from models import db, MarketRegime
+from flask_app.models import db, MarketRegime
 
 class RegimeService:
     """Service for market regime operations in Flask app"""

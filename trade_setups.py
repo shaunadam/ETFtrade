@@ -69,8 +69,15 @@ class BaseSetup(ABC):
         self.data_cache = DataCache(db_path)
     
     @abstractmethod
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
-        """Scan list of symbols for trade signals."""
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
+        """Scan list of symbols for trade signals.
+        
+        Args:
+            symbols: List of symbols to scan
+            preloaded_data: Optional pre-loaded market data dictionary {symbol: DataFrame}
+                           If provided, will use this instead of fetching data individually
+            current_regime: Optional pre-computed regime data to avoid repeated API calls
+        """
         pass
     
     @abstractmethod
@@ -78,8 +85,22 @@ class BaseSetup(ABC):
         """Validate if signal is suitable given current regime."""
         pass
     
-    def get_market_data(self, symbol: str, period: str = "6mo") -> pd.DataFrame:
-        """Get market data for analysis."""
+    def get_market_data(self, symbol: str, period: str = "6mo", preloaded_data: Optional[Dict[str, pd.DataFrame]] = None) -> pd.DataFrame:
+        """Get market data for analysis.
+        
+        Args:
+            symbol: Symbol to get data for
+            period: Period for data if fetching from cache
+            preloaded_data: Optional pre-loaded data dictionary
+            
+        Returns:
+            DataFrame with market data and indicators
+        """
+        # Use pre-loaded data if available
+        if preloaded_data and symbol in preloaded_data:
+            return preloaded_data[symbol]
+        
+        # Fallback to cache for backward compatibility
         return self.data_cache.get_cached_data(symbol, period)
     
     
@@ -114,8 +135,8 @@ class BaseSetup(ABC):
         
         # Volatility adjustment based on current regime
         if volatility_adjustment:
-            current_regime = self.regime_detector.detect_current_regime()
-            volatility_multiplier = self._get_volatility_position_multiplier(current_regime)
+            regime_for_volatility = self.regime_detector.detect_current_regime()
+            volatility_multiplier = self._get_volatility_position_multiplier(regime_for_volatility)
             adjusted_risk_amount = base_risk_amount * volatility_multiplier
         else:
             adjusted_risk_amount = base_risk_amount
@@ -222,21 +243,21 @@ class BaseSetup(ABC):
 class TrendPullbackSetup(BaseSetup):
     """Trend pullback setup - buy pullbacks in uptrending markets."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # Only trade pullbacks in trending markets
-        if current_regime.trend_regime not in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
+        if regime_for_analysis.trend_regime not in [TrendRegime.STRONG_UPTREND, TrendRegime.MILD_UPTREND]:
             return signals
         
         for symbol in symbols:
             try:
-                data = self.get_market_data(symbol)
+                data = self.get_market_data(symbol, preloaded_data=preloaded_data)
                 if len(data) < 200:  # Need enough data for 200-day SMA
                     continue
                 
-                signal = self._analyze_pullback(symbol, data, current_regime)
+                signal = self._analyze_pullback(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -339,21 +360,21 @@ class TrendPullbackSetup(BaseSetup):
 class BreakoutContinuationSetup(BaseSetup):
     """Breakout continuation setup - buy volume-confirmed breakouts."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # Avoid breakouts in high volatility
-        if current_regime.volatility_regime == VolatilityRegime.HIGH:
+        if regime_for_analysis.volatility_regime == VolatilityRegime.HIGH:
             return signals
         
         for symbol in symbols:
             try:
-                data = self.get_market_data(symbol)
+                data = self.get_market_data(symbol, preloaded_data=preloaded_data)
                 if len(data) < 50:
                     continue
                 
-                signal = self._analyze_breakout(symbol, data, current_regime)
+                signal = self._analyze_breakout(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -460,18 +481,18 @@ class BreakoutContinuationSetup(BaseSetup):
 class OversoldMeanReversionSetup(BaseSetup):
     """Oversold mean reversion setup - buy oversold conditions in ranging markets."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # Best in ranging/neutral markets
         for symbol in symbols:
             try:
-                data = self.get_market_data(symbol)
+                data = self.get_market_data(symbol, preloaded_data=preloaded_data)
                 if len(data) < 50:
                     continue
                 
-                signal = self._analyze_oversold(symbol, data, current_regime)
+                signal = self._analyze_oversold(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -564,9 +585,9 @@ class OversoldMeanReversionSetup(BaseSetup):
 class RegimeRotationSetup(BaseSetup):
     """Regime rotation setup - sector rotation based on regime changes."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # Get recent regime history to detect changes
         regime_history = self.regime_detector.get_regime_history(days=5)
@@ -578,13 +599,13 @@ class RegimeRotationSetup(BaseSetup):
             return signals
         
         # Get sector preferences for current regime
-        preferred_sectors = self._get_preferred_sectors(current_regime)
+        preferred_sectors = self._get_preferred_sectors(regime_for_analysis)
         
         for symbol in symbols:
             try:
                 sector = self._get_symbol_sector(symbol)
                 if sector in preferred_sectors:
-                    signal = self._analyze_rotation_entry(symbol, current_regime, sector)
+                    signal = self._analyze_rotation_entry(symbol, regime_for_analysis, sector)
                     if signal:
                         signals.append(signal)
                         
@@ -690,9 +711,9 @@ class RegimeRotationSetup(BaseSetup):
 class GapFillReversalSetup(BaseSetup):
     """Gap fill reversal setup - trade ETFs that gap down with reversal signals."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -700,7 +721,7 @@ class GapFillReversalSetup(BaseSetup):
                 if len(data) < 20:
                     continue
                 
-                signal = self._analyze_gap_reversal(symbol, data, current_regime)
+                signal = self._analyze_gap_reversal(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -811,9 +832,9 @@ class GapFillReversalSetup(BaseSetup):
 class RelativeStrengthMomentumSetup(BaseSetup):
     """Relative strength momentum setup - buy ETFs outperforming SPY during weakness."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # Get SPY data for comparison
         spy_data = self.get_market_data("SPY", period="3mo")
@@ -829,7 +850,7 @@ class RelativeStrengthMomentumSetup(BaseSetup):
                 if len(data) < 20:
                     continue
                 
-                signal = self._analyze_relative_strength(symbol, data, spy_data, current_regime)
+                signal = self._analyze_relative_strength(symbol, data, spy_data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -931,9 +952,9 @@ class RelativeStrengthMomentumSetup(BaseSetup):
 class VolatilityContractionSetup(BaseSetup):
     """Volatility contraction setup - trade after periods of low volatility before expansion."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -941,7 +962,7 @@ class VolatilityContractionSetup(BaseSetup):
                 if len(data) < 50:
                     continue
                 
-                signal = self._analyze_volatility_contraction(symbol, data, current_regime)
+                signal = self._analyze_volatility_contraction(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1046,12 +1067,12 @@ class VolatilityContractionSetup(BaseSetup):
 class DividendDistributionPlaySetup(BaseSetup):
     """Dividend/distribution play setup - combine technical setups with ex-dividend timing."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         # This setup works better in stable regimes
-        if current_regime.volatility_regime == VolatilityRegime.HIGH:
+        if regime_for_analysis.volatility_regime == VolatilityRegime.HIGH:
             return signals
         
         for symbol in symbols:
@@ -1060,7 +1081,7 @@ class DividendDistributionPlaySetup(BaseSetup):
                 if len(data) < 20:
                     continue
                 
-                signal = self._analyze_dividend_play(symbol, data, current_regime)
+                signal = self._analyze_dividend_play(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1175,9 +1196,9 @@ class DividendDistributionPlaySetup(BaseSetup):
 class ElderTripleScreenSetup(BaseSetup):
     """Elder's Triple Screen setup - multi-timeframe trend following with precise entry timing."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -1186,7 +1207,7 @@ class ElderTripleScreenSetup(BaseSetup):
                 if len(data) < 100:
                     continue
                 
-                signal = self._analyze_triple_screen(symbol, data, current_regime)
+                signal = self._analyze_triple_screen(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1232,8 +1253,7 @@ class ElderTripleScreenSetup(BaseSetup):
         
         # Position sizing and risk management with volatility adjustment
         atr = data['ATR'].iloc[-1]
-        current_regime = self.regime_detector.detect_current_regime()
-        atr_multiplier = self._get_volatility_atr_multiplier(current_regime)
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         recent_swing_low = data['Low'].rolling(10).min().iloc[-1]
         stop_loss = max(recent_swing_low, current_price - (atr_multiplier * atr))
         target_price = current_price + (atr_multiplier * 1.5 * atr)  # 1.5:1 reward/risk
@@ -1316,9 +1336,9 @@ class ElderTripleScreenSetup(BaseSetup):
 class InstitutionalVolumeClimaxSetup(BaseSetup):
     """Institutional volume climax setup - detect accumulation during retail panic selling."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -1326,7 +1346,7 @@ class InstitutionalVolumeClimaxSetup(BaseSetup):
                 if len(data) < 50:
                     continue
                 
-                signal = self._analyze_volume_climax(symbol, data, current_regime)
+                signal = self._analyze_volume_climax(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1447,9 +1467,9 @@ class InstitutionalVolumeClimaxSetup(BaseSetup):
 class FailedBreakdownReversalSetup(BaseSetup):
     """Failed breakdown reversal setup - capitalize on bear traps and quick reversals."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -1457,7 +1477,7 @@ class FailedBreakdownReversalSetup(BaseSetup):
                 if len(data) < 50:
                     continue
                 
-                signal = self._analyze_failed_breakdown(symbol, data, current_regime)
+                signal = self._analyze_failed_breakdown(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1605,9 +1625,9 @@ class FailedBreakdownReversalSetup(BaseSetup):
 class EarningsExpectationResetSetup(BaseSetup):
     """Earnings expectation reset setup - trade technical patterns after earnings uncertainty is removed."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -1615,7 +1635,7 @@ class EarningsExpectationResetSetup(BaseSetup):
                 if len(data) < 30:
                     continue
                 
-                signal = self._analyze_earnings_reset(symbol, data, current_regime)
+                signal = self._analyze_earnings_reset(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1735,9 +1755,9 @@ class EarningsExpectationResetSetup(BaseSetup):
 class ElderForceImpulseSetup(BaseSetup):
     """Elder's Force Index + Impulse System setup - combines price, volume, trend, and momentum."""
     
-    def scan_for_signals(self, symbols: List[str]) -> List[TradeSignal]:
+    def scan_for_signals(self, symbols: List[str], preloaded_data: Optional[Dict[str, pd.DataFrame]] = None, current_regime: Optional[RegimeData] = None) -> List[TradeSignal]:
         signals = []
-        current_regime = self.regime_detector.detect_current_regime()
+        regime_for_analysis = current_regime or self.regime_detector.detect_current_regime()
         
         for symbol in symbols:
             try:
@@ -1745,7 +1765,7 @@ class ElderForceImpulseSetup(BaseSetup):
                 if len(data) < 50:  # Need enough data for indicators
                     continue
                 
-                signal = self._analyze_elder_force_impulse(symbol, data, current_regime)
+                signal = self._analyze_elder_force_impulse(symbol, data, regime_for_analysis)
                 if signal:
                     signals.append(signal)
                     
@@ -1812,8 +1832,7 @@ class ElderForceImpulseSetup(BaseSetup):
         
         # Position sizing and risk management with volatility adjustment
         atr = data['ATR'].iloc[-1] if 'ATR' in data.columns else current_price * 0.02
-        current_regime = self.regime_detector.detect_current_regime()
-        atr_multiplier = self._get_volatility_atr_multiplier(current_regime)
+        atr_multiplier = self._get_volatility_atr_multiplier(regime)
         
         # Stop loss: Below recent swing low or when impulse might turn red
         recent_low = data['Low'].rolling(10).min().iloc[-1]

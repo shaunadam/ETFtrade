@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 try:
     from backtest import BacktestEngine, OptimizationParameters
     from trade_setups import SetupManager, SetupType
-    from models import db, Setup
+    from flask_app.models import db, Setup
 except ImportError as e:
     print(f"Import error in backtest service: {e}")
     # Fallback for development

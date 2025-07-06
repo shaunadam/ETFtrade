@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 # Add parent directory to import CLI modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from models import db, Trade, Instrument, Setup, Snapshot
+from flask_app.models import db, Trade, Instrument, Setup, Snapshot
 
 class TradeService:
     """Service for trade operations in Flask app"""

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from data_cache import DataCache
-from models import db, Instrument, PriceData, Indicator
+from flask_app.models import db, Instrument, PriceData, Indicator
 
 class DataService:
     """Service for managing data operations in Flask app"""
