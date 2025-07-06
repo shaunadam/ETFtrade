@@ -20,12 +20,6 @@ from typing import Dict, List, Optional, Set, Tuple
 import logging
 import os
 
-# Configure logging with debug capability
-log_level = logging.DEBUG if os.getenv('ETF_DEBUG') else logging.INFO
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 

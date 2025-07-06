@@ -106,13 +106,6 @@
 - Configuration validation
 ```
 
-## Just found a bug when trying to run backtest on two symbols. Here's the logs:
-2025-07-06 09:10:53,162 - backtest - ERROR - Selected instruments filtering resulted in 0 symbols. Requested: ['BIIB', 'CVX'], Available: ['ARKF', 'ARKG', 'ARKK', 'ARKW', 'ASHR', 'BOTZ', 'BULZ', 'CIBR', 'COPX', 'EEM']...
-2025-07-06 09:10:53,170 - backtest - INFO - Filtering to 0 selected instruments from 2 requested
-2025-07-06 09:10:53,170 - backtest - INFO - Filtering to 0 selected instruments from 2 requested
-2025-07-06 09:10:53,170 - backtest - WARNING - No symbols available for processing on 2024-08-01
-2025-07-06 09:10:53,170 - backtest - WARNING - No symbols available for processing on 2024-08-01
-2025-07-06 09:10:53,170 - backtest - ERROR - Selected instruments filtering resulted in 0 symbols. Requested: ['BIIB', 'CVX'], Available: ['ARKF', 'ARKG', 'ARKK', 'ARKW', 'ASHR', 'BOTZ', 'BULZ', 'CIBR', 'COPX', 'EEM']...
 
 #### Task 3.2: Enhance Web Interface
 ```python

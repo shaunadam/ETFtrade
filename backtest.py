@@ -685,7 +685,9 @@ class BacktestEngine:
         max_risk_amount = current_capital * self.max_risk_per_trade
         
         # Apply optimized stop loss and target parameters
-        entry_price = signal.entry_price
+        # Get actual historical price for the backtest entry date
+        historical_entry_price = self._get_price_for_date(signal.symbol, entry_date)
+        entry_price = historical_entry_price if historical_entry_price is not None else signal.entry_price
         optimized_stop_loss = entry_price * (1 - self.current_params.stop_loss_pct)
         optimized_target = entry_price * (1 + self.current_params.stop_loss_pct * self.current_params.profit_target_r)
         
@@ -702,15 +704,13 @@ class BacktestEngine:
         
         # Create trade record with optimized parameters
         trade = BacktestTrade(
-            trade_id=self.trade_id_counter,
             symbol=signal.symbol,
-            setup_type=signal.setup_type,
+            setup=signal.setup_type,
             entry_date=entry_date,
             entry_price=entry_price,
-            position_size=position_size,
+            quantity=position_size,
             stop_loss=optimized_stop_loss,
-            target_price=optimized_target,
-            risk_per_share=risk_per_share,
+            target=optimized_target,
             confidence=signal.confidence,
             regime_at_entry=signal.regime_context
         )
@@ -753,7 +753,7 @@ class BacktestEngine:
                     exit_reason = TradeStatus.CLOSED_STOP
                 
                 # Check target
-                elif current_price >= position.target_price:
+                elif current_price >= position.target:
                     exit_triggered = True
                     exit_reason = TradeStatus.CLOSED_TARGET
                 
@@ -785,16 +785,17 @@ class BacktestEngine:
         position.exit_date = exit_date
         position.exit_price = exit_price
         position.status = exit_reason
-        position.days_held = (exit_date - position.entry_date).days
+        # Calculate days held dynamically since it's not in the dataclass
+        days_held = (exit_date - position.entry_date).days
         
         # Calculate P&L
         price_change = exit_price - position.entry_price
-        position.pnl = position.position_size * price_change
+        position.realized_pnl = position.quantity * price_change
         
         # Calculate R-multiple
-        risk_amount = position.position_size * position.risk_per_share
+        risk_amount = position.quantity * abs(position.entry_price - position.stop_loss)
         if risk_amount > 0:
-            position.r_multiple = position.pnl / risk_amount
+            position.r_multiple = position.realized_pnl / risk_amount
         else:
             position.r_multiple = 0
         
@@ -802,8 +803,8 @@ class BacktestEngine:
         
         # Log trade exit details
         self.logger.info(f"Closed {position.symbol}: ${position.entry_price:.2f} -> ${exit_price:.2f} "
-                        f"(R: {position.r_multiple:.2f}, P&L: ${position.pnl:.2f})")
-        self.logger.debug(f"Exit reason: {exit_reason.value}, Days held: {position.days_held}, "
+                        f"(R: {position.r_multiple:.2f}, P&L: ${position.realized_pnl:.2f})")
+        self.logger.debug(f"Exit reason: {exit_reason.value}, Days held: {days_held}, "
                          f"MAE: {position.mae:.1f}%, MFE: {position.mfe:.1f}%")
     
     def _get_price_for_date(self, symbol: str, date: datetime) -> Optional[float]:
@@ -832,13 +833,13 @@ class BacktestEngine:
         
         # Subtract cost of all trades
         for trade in self.trade_manager.trades:
-            cash += trade.pnl or 0
+            cash += trade.realized_pnl or 0
         
         # Add unrealized P&L from open positions
         for position in self.trade_manager.current_positions:
             current_price = self._get_price_for_date(position.symbol, current_date)
             if current_price:
-                unrealized_pnl = position.position_size * (current_price - position.entry_price)
+                unrealized_pnl = position.quantity * (current_price - position.entry_price)
                 cash += unrealized_pnl
         
         return cash
@@ -862,7 +863,7 @@ class BacktestEngine:
         
         # Basic trade statistics
         total_trades = len(self.trade_manager.trades)
-        winning_trades = len([t for t in self.trade_manager.trades if (t.pnl or 0) > 0])
+        winning_trades = len([t for t in self.trade_manager.trades if (t.realized_pnl or 0) > 0])
         losing_trades = total_trades - winning_trades
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
         
@@ -871,7 +872,7 @@ class BacktestEngine:
         avg_r_multiple = np.mean(r_multiples) if r_multiples else 0
         
         # Return calculations
-        total_pnl = sum(t.pnl for t in self.trade_manager.trades if t.pnl is not None)
+        total_pnl = sum(t.realized_pnl for t in self.trade_manager.trades if t.realized_pnl is not None)
         total_return = total_pnl / self.initial_capital if self.initial_capital > 0 else 0
         
         # Drawdown calculation
@@ -901,10 +902,10 @@ class BacktestEngine:
         calmar_ratio = (total_return * 100) / (abs(max_drawdown) * 100) if max_drawdown != 0 else 0
         
         # Other metrics
-        days_held = [t.days_held for t in self.trade_manager.trades if t.days_held is not None]
+        days_held = [(t.exit_date - t.entry_date).days for t in self.trade_manager.trades if t.exit_date is not None]
         avg_days_held = np.mean(days_held) if days_held else 0
         
-        pnls = [t.pnl for t in self.trade_manager.trades if t.pnl is not None]
+        pnls = [t.realized_pnl for t in self.trade_manager.trades if t.realized_pnl is not None]
         largest_winner = max(pnls) if pnls else 0
         largest_loser = min(pnls) if pnls else 0
         
@@ -920,8 +921,8 @@ class BacktestEngine:
         etf_trades = sum(1 for t in self.trade_manager.trades if not self._is_stock(t.symbol))
         stock_trades = sum(1 for t in self.trade_manager.trades if self._is_stock(t.symbol))
         
-        etf_wins = sum(1 for t in self.trade_manager.trades if not self._is_stock(t.symbol) and (t.pnl or 0) > 0)
-        stock_wins = sum(1 for t in self.trade_manager.trades if self._is_stock(t.symbol) and (t.pnl or 0) > 0)
+        etf_wins = sum(1 for t in self.trade_manager.trades if not self._is_stock(t.symbol) and (t.realized_pnl or 0) > 0)
+        stock_wins = sum(1 for t in self.trade_manager.trades if self._is_stock(t.symbol) and (t.realized_pnl or 0) > 0)
         
         etf_win_rate = etf_wins / etf_trades if etf_trades > 0 else 0
         stock_win_rate = stock_wins / stock_trades if stock_trades > 0 else 0
@@ -932,10 +933,10 @@ class BacktestEngine:
         etf_avg_r = np.mean(etf_r_multiples) if etf_r_multiples else 0
         stock_avg_r = np.mean(stock_r_multiples) if stock_r_multiples else 0
         
-        etf_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trade_manager.trades 
-                      if not self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
-        stock_returns = [t.pnl / (t.entry_price * t.position_size) for t in self.trade_manager.trades 
-                        if self._is_stock(t.symbol) and t.pnl is not None and t.entry_price and t.position_size]
+        etf_returns = [t.realized_pnl / (t.entry_price * t.quantity) for t in self.trade_manager.trades 
+                      if not self._is_stock(t.symbol) and t.realized_pnl is not None and t.entry_price and t.quantity]
+        stock_returns = [t.realized_pnl / (t.entry_price * t.quantity) for t in self.trade_manager.trades 
+                        if self._is_stock(t.symbol) and t.realized_pnl is not None and t.entry_price and t.quantity]
         
         etf_avg_return = np.mean(etf_returns) if etf_returns else 0
         stock_avg_return = np.mean(stock_returns) if stock_returns else 0
@@ -1064,7 +1065,7 @@ class BacktestEngine:
         max_losses = 0
         
         for trade in self.trade_manager.trades:
-            if (trade.pnl or 0) > 0:
+            if (trade.realized_pnl or 0) > 0:
                 current_wins += 1
                 current_losses = 0
                 max_wins = max(max_wins, current_wins)
@@ -1088,6 +1089,36 @@ class BacktestEngine:
             current += timedelta(days=1)
         
         return trading_days
+    
+    def _is_stock(self, symbol: str) -> bool:
+        """
+        Check if symbol is a stock (as opposed to ETF).
+        
+        Args:
+            symbol: Symbol to check
+            
+        Returns:
+            True if symbol is likely a stock, False if it's likely an ETF
+        """
+        # Simple heuristic: ETFs typically have 3-4 letter symbols and certain patterns
+        # This could be enhanced with database lookup
+        common_etf_patterns = ['SPY', 'QQQ', 'IWM', 'VTI', 'VOO', 'VEA', 'VWO', 'AGG', 'BND', 'TLT']
+        
+        if symbol in common_etf_patterns:
+            return False
+        
+        # Check for common ETF naming patterns
+        if (symbol.startswith('I') and len(symbol) == 3) or \
+           (symbol.startswith('V') and len(symbol) == 3) or \
+           symbol.startswith('XL') or symbol.startswith('SPD'):
+            return False
+        
+        # If symbol is longer than 4 characters, likely a stock
+        if len(symbol) > 4:
+            return True
+        
+        # Default to treating as stock if uncertain
+        return True
     
     
     # _validate_regime_signal method removed - now handled by RegimeValidator class
@@ -1260,7 +1291,7 @@ class BacktestEngine:
         
         # Basic statistics
         total_trades = len(trades)
-        winning_trades = len([t for t in trades if (t.pnl or 0) > 0])
+        winning_trades = len([t for t in trades if (t.realized_pnl or 0) > 0])
         losing_trades = total_trades - winning_trades
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
         
@@ -1269,14 +1300,14 @@ class BacktestEngine:
         avg_r_multiple = np.mean(r_multiples) if r_multiples else 0
         
         # Return calculations
-        total_pnl = sum(t.pnl for t in trades if t.pnl is not None)
+        total_pnl = sum(t.realized_pnl for t in trades if t.realized_pnl is not None)
         total_return = total_pnl / self.initial_capital if self.initial_capital > 0 else 0
         
         # Other metrics
-        days_held = [t.days_held for t in trades if t.days_held is not None]
+        days_held = [(t.exit_date - t.entry_date).days for t in trades if t.exit_date is not None]
         avg_days_held = np.mean(days_held) if days_held else 0
         
-        pnls = [t.pnl for t in trades if t.pnl is not None]
+        pnls = [t.realized_pnl for t in trades if t.realized_pnl is not None]
         largest_winner = max(pnls) if pnls else 0
         largest_loser = min(pnls) if pnls else 0
         
