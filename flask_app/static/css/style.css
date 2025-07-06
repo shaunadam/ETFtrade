@@ -477,3 +477,273 @@ footer {
 .operation-step.error .step-icon {
     color: var(--trading-red);
 }
+
+/* Advanced Configuration UI Styles */
+.config-section {
+    min-height: 300px;
+    padding: 15px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.metric-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.metric-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
+}
+
+/* Enhanced Navigation Pills */
+.nav-pills .nav-link {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-radius: 20px;
+    margin: 0 2px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.nav-pills .nav-link:hover {
+    background: rgba(10, 189, 227, 0.7);
+    color: #fff;
+}
+
+.nav-pills .nav-link.active {
+    background: var(--trading-blue);
+    color: #fff;
+}
+
+/* Enhanced Form Controls */
+.form-range::-webkit-slider-thumb {
+    background: var(--trading-blue);
+    border: 2px solid var(--trading-blue);
+    box-shadow: 0 2px 6px rgba(10, 189, 227, 0.4);
+}
+
+.form-range::-moz-range-thumb {
+    background: var(--trading-blue);
+    border: 2px solid var(--trading-blue);
+    box-shadow: 0 2px 6px rgba(10, 189, 227, 0.4);
+}
+
+.form-range::-webkit-slider-track {
+    background: rgba(255, 255, 255, 0.1);
+    height: 6px;
+    border-radius: 3px;
+}
+
+.form-select[multiple] {
+    min-height: 120px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.form-select[multiple]:focus {
+    border-color: var(--trading-blue);
+    box-shadow: 0 0 0 0.2rem rgba(10, 189, 227, 0.25);
+}
+
+/* Enhanced Tab Content */
+.tab-content {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    margin-top: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Enhanced Form Switches */
+.form-check-input:checked {
+    background-color: var(--trading-blue);
+    border-color: var(--trading-blue);
+    box-shadow: 0 2px 4px rgba(10, 189, 227, 0.3);
+}
+
+.form-check-input:focus {
+    border-color: var(--trading-blue);
+    box-shadow: 0 0 0 0.2rem rgba(10, 189, 227, 0.25);
+}
+
+/* Enhanced Button Styles */
+.btn-outline-primary {
+    border-color: var(--trading-blue);
+    color: var(--trading-blue);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--trading-blue);
+    border-color: var(--trading-blue);
+    color: #fff;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--trading-blue), #087ea4);
+    border-color: var(--trading-blue);
+    box-shadow: 0 4px 8px rgba(10, 189, 227, 0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #087ea4, var(--trading-blue));
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(10, 189, 227, 0.4);
+}
+
+.btn-primary:disabled {
+    background: rgba(10, 189, 227, 0.5);
+    border-color: rgba(10, 189, 227, 0.5);
+    transform: none;
+    box-shadow: none;
+}
+
+/* Configuration Preset Enhancement */
+.dropdown-menu-dark {
+    background: rgba(26, 26, 26, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.dropdown-item:hover {
+    background: rgba(10, 189, 227, 0.2);
+    color: var(--trading-blue);
+}
+
+/* Real-time Validation Indicators */
+.validation-indicator {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+}
+
+.validation-indicator.valid {
+    color: var(--trading-green);
+}
+
+.validation-indicator.invalid {
+    color: var(--trading-red);
+}
+
+/* Enhanced Range Value Display */
+.form-range + .text-center small {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+    min-width: 60px;
+    display: inline-block;
+}
+
+/* Configuration Section Headers */
+.config-section h6 {
+    color: var(--trading-blue);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid rgba(10, 189, 227, 0.3);
+}
+
+/* Enhanced Modal Styling */
+.modal-content.bg-dark {
+    background: rgba(26, 26, 26, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(15px);
+}
+
+.modal-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-footer {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Enhanced Toast Notifications */
+.position-fixed.alert {
+    min-width: 300px;
+    max-width: 450px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Enhanced Table Styling */
+.table-dark tbody tr:hover {
+    background: rgba(10, 189, 227, 0.1);
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Parameter Impact Indicators */
+.parameter-impact {
+    position: relative;
+    display: inline-block;
+    margin-left: 8px;
+}
+
+.parameter-impact::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 4px;
+}
+
+.parameter-impact.high::after {
+    background: var(--trading-red);
+}
+
+.parameter-impact.medium::after {
+    background: var(--trading-yellow);
+}
+
+.parameter-impact.low::after {
+    background: var(--trading-green);
+}
+
+/* Responsive Enhancements */
+@media (max-width: 768px) {
+    .config-section {
+        min-height: auto;
+        padding: 10px;
+    }
+    
+    .nav-pills .nav-link {
+        font-size: 12px;
+        padding: 6px 8px;
+    }
+    
+    .metric-card {
+        margin-bottom: 10px;
+    }
+    
+    .position-fixed.alert {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+    }
+}

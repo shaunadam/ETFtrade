@@ -117,3 +117,139 @@ def api_run():
             'success': False,
             'error': str(e)
         }), 500
+
+@backtest_bp.route('/api/config/presets')
+def api_config_presets():
+    """API endpoint for configuration presets"""
+    try:
+        backtest_service = BacktestService()
+        presets = backtest_service.get_available_presets()
+        
+        return jsonify({
+            'success': True,
+            'data': presets,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/config/load', methods=['POST'])
+def api_config_load():
+    """API endpoint for loading configuration"""
+    try:
+        backtest_service = BacktestService()
+        data = request.json if request.json else {}
+        
+        preset_name = data.get('preset_name')
+        config_file = data.get('config_file')
+        
+        result = backtest_service.load_configuration(preset_name, config_file)
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/config/save', methods=['POST'])
+def api_config_save():
+    """API endpoint for saving configuration"""
+    try:
+        backtest_service = BacktestService()
+        data = request.json if request.json else {}
+        
+        config_dict = data.get('config', {})
+        name = data.get('name', f'config_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+        
+        result = backtest_service.save_configuration(config_dict, name)
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/config/validate-full', methods=['POST'])
+def api_config_validate_full():
+    """API endpoint for full configuration validation"""
+    try:
+        backtest_service = BacktestService()
+        config_dict = request.json if request.json else {}
+        
+        result = backtest_service.validate_configuration(config_dict)
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/config/export', methods=['POST'])
+def api_config_export():
+    """API endpoint for exporting configuration"""
+    try:
+        backtest_service = BacktestService()
+        config_dict = request.json if request.json else {}
+        
+        result = backtest_service.export_configuration(config_dict)
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/config/saved')
+def api_config_saved():
+    """API endpoint for getting saved configurations"""
+    try:
+        backtest_service = BacktestService()
+        configs = backtest_service.get_saved_configurations()
+        
+        return jsonify({
+            'success': True,
+            'data': configs,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@backtest_bp.route('/api/run-with-config', methods=['POST'])
+def api_run_with_config():
+    """API endpoint for running backtest with full configuration"""
+    try:
+        backtest_service = BacktestService()
+        data = request.json if request.json else {}
+        
+        config_dict = data.get('config', {})
+        ui_settings = data.get('ui_settings', {})
+        
+        # Validate configuration first
+        validation = backtest_service.validate_configuration(config_dict)
+        if not validation.get('success', False) or not validation.get('data', {}).get('valid', False):
+            return jsonify({
+                'success': False,
+                'error': 'Configuration validation failed',
+                'validation': validation
+            }), 400
+        
+        # Run backtest with configuration
+        results = backtest_service.run_backtest_with_config(config_dict, ui_settings)
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500

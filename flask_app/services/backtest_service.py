@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 try:
     from backtest import BacktestEngine, OptimizationParameters
     from trade_setups import SetupManager, SetupType
+    from backtest_config import BacktestConfiguration, load_config
     from flask_app.models import db, Setup
 except ImportError as e:
     print(f"Import error in backtest service: {e}")
@@ -24,6 +25,8 @@ except ImportError as e:
     OptimizationParameters = None
     SetupManager = None
     SetupType = None
+    BacktestConfiguration = None
+    load_config = None
 
 class BacktestService:
     """Service for backtesting operations in Flask app"""
@@ -41,6 +44,10 @@ class BacktestService:
             self.setup_manager = SetupManager(db_path)
         else:
             self.setup_manager = None
+            
+        # Configuration management
+        self.config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'configs')
+        os.makedirs(self.config_dir, exist_ok=True)
     
     def get_available_setups(self) -> List[Dict]:
         """Get available trade setups for backtesting"""
@@ -147,19 +154,23 @@ class BacktestService:
     
     def get_default_parameters(self) -> Dict:
         """Get default backtest parameters"""
-        return {
-            'start_date': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-            'end_date': datetime.now().strftime('%Y-%m-%d'),
-            'setup_name': 'all',
-            'walk_forward': True,
-            'regime_aware': True,
-            'stop_loss_pct': 0.05,
-            'profit_target_r': 2.0,
-            'confidence_threshold': 0.6,
-            'max_holding_days': 60,
-            'position_size_method': 'fixed_risk',
-            'initial_capital': 100000
-        }
+        if BacktestConfiguration:
+            config = BacktestConfiguration.default()
+            return self._config_to_dict(config)
+        else:
+            return {
+                'start_date': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
+                'end_date': datetime.now().strftime('%Y-%m-%d'),
+                'setup_name': 'all',
+                'walk_forward': True,
+                'regime_aware': True,
+                'stop_loss_pct': 0.05,
+                'profit_target_r': 2.0,
+                'confidence_threshold': 0.6,
+                'max_holding_days': 60,
+                'position_size_method': 'fixed_risk',
+                'initial_capital': 100000
+            }
     
     def validate_parameters(self, config: Dict) -> Dict:
         """Validate backtest parameters"""
@@ -328,4 +339,253 @@ class BacktestService:
             
         except Exception as e:
             return {'error': f'Failed to format multiple setup results: {str(e)}'}
+    
+    def get_available_presets(self) -> List[Dict]:
+        """Get available configuration presets"""
+        if not BacktestConfiguration:
+            return []
+        
+        presets = [
+            {
+                'name': 'default',
+                'display_name': 'Default',
+                'description': 'Balanced configuration for ETF/stock trading',
+                'config': BacktestConfiguration.default()
+            },
+            {
+                'name': 'conservative',
+                'display_name': 'Conservative',
+                'description': 'Lower risk with higher confidence requirements',
+                'config': BacktestConfiguration.conservative_preset()
+            },
+            {
+                'name': 'aggressive',
+                'display_name': 'Aggressive', 
+                'description': 'Higher risk with lower confidence requirements',
+                'config': BacktestConfiguration.aggressive_preset()
+            },
+            {
+                'name': 'debug',
+                'display_name': 'Debug',
+                'description': 'Debug configuration with extensive logging',
+                'config': BacktestConfiguration.debug_preset()
+            }
+        ]
+        
+        # Convert configs to dictionaries
+        for preset in presets:
+            preset['config'] = self._config_to_dict(preset['config'])
+        
+        return presets
+    
+    def load_configuration(self, preset_name: Optional[str] = None, config_file: Optional[str] = None) -> Dict:
+        """Load configuration from preset or file"""
+        try:
+            if not BacktestConfiguration:
+                return {'success': False, 'error': 'Configuration system not available'}
+            
+            if config_file:
+                config_path = os.path.join(self.config_dir, config_file)
+                if os.path.exists(config_path):
+                    config = BacktestConfiguration.from_file(config_path)
+                else:
+                    return {'success': False, 'error': f'Configuration file not found: {config_file}'}
+            elif preset_name:
+                config = load_config(preset=preset_name)
+            else:
+                config = BacktestConfiguration.default()
+            
+            return {
+                'success': True,
+                'data': self._config_to_dict(config),
+                'validation': config.get_validation_summary()
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to load configuration: {str(e)}'}
+    
+    def save_configuration(self, config_dict: Dict, name: str) -> Dict:
+        """Save configuration to file"""
+        try:
+            if not BacktestConfiguration:
+                return {'success': False, 'error': 'Configuration system not available'}
+            
+            config = BacktestConfiguration.from_dict(config_dict)
+            config.config_name = name
+            
+            # Validate configuration
+            if not config.is_valid():
+                return {
+                    'success': False,
+                    'error': 'Configuration validation failed',
+                    'validation': config.get_validation_summary()
+                }
+            
+            # Save to file
+            config_file = f"{name}.json"
+            config_path = os.path.join(self.config_dir, config_file)
+            config.to_file(config_path)
+            
+            return {
+                'success': True,
+                'message': f'Configuration saved as {config_file}',
+                'file': config_file
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Failed to save configuration: {str(e)}'}
+    
+    def validate_configuration(self, config_dict: Dict) -> Dict:
+        """Validate complete configuration"""
+        try:
+            if not BacktestConfiguration:
+                return {'success': False, 'error': 'Configuration system not available'}
+            
+            config = BacktestConfiguration.from_dict(config_dict)
+            validation_results = config.validate()
+            
+            return {
+                'success': True,
+                'data': {
+                    'valid': config.is_valid(),
+                    'validation_results': validation_results,
+                    'summary': config.get_validation_summary()
+                }
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Validation failed: {str(e)}'}
+    
+    def export_configuration(self, config_dict: Dict) -> Dict:
+        """Export configuration as JSON"""
+        try:
+            if not BacktestConfiguration:
+                return {'success': False, 'error': 'Configuration system not available'}
+            
+            config = BacktestConfiguration.from_dict(config_dict)
+            
+            return {
+                'success': True,
+                'data': config.to_dict(),
+                'filename': f"{config.config_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Export failed: {str(e)}'}
+    
+    def get_saved_configurations(self) -> List[Dict]:
+        """Get list of saved configuration files"""
+        try:
+            configs = []
+            if os.path.exists(self.config_dir):
+                for filename in os.listdir(self.config_dir):
+                    if filename.endswith('.json'):
+                        filepath = os.path.join(self.config_dir, filename)
+                        try:
+                            config = BacktestConfiguration.from_file(filepath)
+                            configs.append({
+                                'filename': filename,
+                                'name': config.config_name,
+                                'description': config.description,
+                                'created_at': config.created_at,
+                                'modified_at': datetime.fromtimestamp(os.path.getmtime(filepath)).isoformat()
+                            })
+                        except Exception:
+                            # Skip invalid config files
+                            continue
+            
+            return configs
+            
+        except Exception as e:
+            return []
+    
+    def _config_to_dict(self, config) -> Dict:
+        """Convert BacktestConfiguration to dictionary with UI-friendly structure"""
+        if not config:
+            return {}
+        
+        config_dict = config.to_dict()
+        
+        # Add UI-friendly date ranges
+        config_dict['ui_settings'] = {
+            'start_date': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
+            'end_date': datetime.now().strftime('%Y-%m-%d'),
+            'setup_name': 'all',
+            'walk_forward': True,
+            'regime_aware': True,
+            'selected_instruments': None
+        }
+        
+        return config_dict
+    
+    def run_backtest_with_config(self, config_dict: Dict, ui_settings: Dict) -> Dict:
+        """Run backtest with full configuration"""
+        try:
+            if not BacktestConfiguration:
+                return {'success': False, 'error': 'Configuration system not available'}
+            
+            # Create configuration object
+            config = BacktestConfiguration.from_dict(config_dict)
+            
+            # Validate configuration
+            if not config.is_valid():
+                return {
+                    'success': False,
+                    'error': 'Configuration validation failed',
+                    'validation': config.get_validation_summary()
+                }
+            
+            # Setup logging
+            config.setup_logging()
+            
+            # Extract UI settings
+            setup_name = ui_settings.get('setup_name', 'all')
+            start_date = datetime.fromisoformat(ui_settings.get('start_date', '2023-01-01'))
+            end_date = datetime.fromisoformat(ui_settings.get('end_date', datetime.now().strftime('%Y-%m-%d')))
+            walk_forward = ui_settings.get('walk_forward', False)
+            regime_aware = ui_settings.get('regime_aware', True)
+            selected_instruments = ui_settings.get('selected_instruments')
+            
+            # Run backtest with configuration
+            if setup_name == 'all':
+                results = self.backtest_engine.run_backtest(
+                    start_date=start_date,
+                    end_date=end_date,
+                    setup_types=None,
+                    walk_forward=walk_forward,
+                    regime_aware=regime_aware,
+                    selected_instruments=selected_instruments,
+                    config=config
+                )
+            else:
+                setup_type = getattr(SetupType, setup_name.upper(), None)
+                if not setup_type:
+                    return {'success': False, 'error': f'Unknown setup type: {setup_name}'}
+                
+                results = self.backtest_engine.run_backtest(
+                    start_date=start_date,
+                    end_date=end_date,
+                    setup_types=[setup_type],
+                    walk_forward=walk_forward,
+                    regime_aware=regime_aware,
+                    selected_instruments=selected_instruments,
+                    config=config
+                )
+            
+            # Format results
+            web_results = self._format_backtest_results(results)
+            
+            if selected_instruments:
+                web_results['selected_instruments'] = selected_instruments
+                web_results['instrument_count'] = len(selected_instruments)
+            
+            return {
+                'success': True,
+                'data': web_results,
+                'config': config_dict,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f'Backtest failed: {str(e)}'}
     

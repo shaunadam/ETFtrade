@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Backtest Engine - ETF/Stock Trading System{% endblock %}
+{% block title %}Advanced Backtest Engine - ETF/Stock Trading System{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
         <h1 class="text-light mb-4">
             <i class="bi bi-graph-up text-trading-blue"></i>
-            Backtest Engine
+            Advanced Backtest Engine
         </h1>
     </div>
 </div>
@@ -47,18 +47,56 @@
     </div>
 </div>
 
-<!-- Backtest Configuration -->
+<!-- Main Configuration Interface -->
 <div class="row">
-    <div class="col-lg-4">
+    <!-- Configuration Panel -->
+    <div class="col-lg-5">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-gear me-2"></i>
-                    Backtest Configuration
-                </h5>
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear me-2"></i>
+                        Backtest Configuration
+                    </h5>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" id="configDropdown" data-bs-toggle="dropdown">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-dark">
+                            <li><a class="dropdown-item" href="#" onclick="exportConfiguration()"><i class="bi bi-download me-2"></i>Export Config</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="importConfiguration()"><i class="bi bi-upload me-2"></i>Import Config</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="showSavedConfigurations()"><i class="bi bi-folder me-2"></i>Saved Configs</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="compareConfigurations()"><i class="bi bi-graph-up-arrow me-2"></i>Compare Configs</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="resetToDefaults()"><i class="bi bi-arrow-clockwise me-2"></i>Reset to Defaults</a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
-                <form id="backtestForm">
+                <!-- Configuration Preset Selection -->
+                <div class="row mb-4">
+                    <div class="col-8">
+                        <label class="form-label">Configuration Preset</label>
+                        <select class="form-select" id="configPreset" onchange="loadPreset()">
+                            <option value="">Select Preset...</option>
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button class="btn btn-outline-primary btn-sm" onclick="saveCurrentConfig()">
+                                <i class="bi bi-floppy me-1"></i>Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Basic Settings -->
+                <div class="mb-4">
+                    <h6 class="text-trading-blue border-bottom pb-2">Basic Settings</h6>
+                    
                     <!-- Setup Selection -->
                     <div class="mb-3">
                         <label class="form-label">Trade Setup</label>
@@ -76,79 +114,311 @@
                     <div class="row mb-3">
                         <div class="col-6">
                             <label class="form-label">Start Date</label>
-                            <input type="date" class="form-control" id="startDate" name="start_date" 
-                                   value="{{ default_params.start_date if default_params else '' }}">
+                            <input type="date" class="form-control" id="startDate" name="start_date">
                         </div>
                         <div class="col-6">
                             <label class="form-label">End Date</label>
-                            <input type="date" class="form-control" id="endDate" name="end_date"
-                                   value="{{ default_params.end_date if default_params else '' }}">
+                            <input type="date" class="form-control" id="endDate" name="end_date">
                         </div>
                     </div>
                     
                     <!-- Analysis Options -->
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="walkForward" name="walk_forward" 
-                                   {% if default_params and default_params.walk_forward %}checked{% endif %}>
-                            <label class="form-check-label" for="walkForward">
-                                Walk-Forward Analysis
-                            </label>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="walkForward" name="walk_forward">
+                                <label class="form-check-label" for="walkForward">Walk-Forward</label>
+                            </div>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="regimeAware" name="regime_aware"
-                                   {% if default_params and default_params.regime_aware %}checked{% endif %}>
-                            <label class="form-check-label" for="regimeAware">
-                                Regime-Aware Analysis
-                            </label>
+                        <div class="col-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="regimeAware" name="regime_aware">
+                                <label class="form-check-label" for="regimeAware">Regime-Aware</label>
+                            </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Advanced Configuration Tabs -->
+                <div class="mb-4">
+                    <h6 class="text-trading-blue border-bottom pb-2">Advanced Configuration</h6>
                     
-                    <!-- Risk Parameters -->
-                    <div class="mb-3">
-                        <label class="form-label">Stop Loss (%)</label>
-                        <input type="number" class="form-control" id="stopLoss" name="stop_loss_pct" 
-                               step="0.01" min="0.01" max="1" 
-                               value="{{ default_params.stop_loss_pct if default_params else '0.05' }}">
-                    </div>
+                    <ul class="nav nav-pills nav-justified mb-3" id="configTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="risk-tab" data-bs-toggle="pill" data-bs-target="#risk-config" type="button" role="tab">Risk</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="trading-tab" data-bs-toggle="pill" data-bs-target="#trading-config" type="button" role="tab">Trading</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="optimization-tab" data-bs-toggle="pill" data-bs-target="#optimization-config" type="button" role="tab">Optimization</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="debug-tab" data-bs-toggle="pill" data-bs-target="#debug-config" type="button" role="tab">Debug</button>
+                        </li>
+                    </ul>
                     
-                    <div class="mb-3">
-                        <label class="form-label">Profit Target (R)</label>
-                        <input type="number" class="form-control" id="profitTarget" name="profit_target_r"
-                               step="0.1" min="0.1" max="10"
-                               value="{{ default_params.profit_target_r if default_params else '2.0' }}">
+                    <div class="tab-content" id="configTabContent">
+                        <!-- Risk Management Tab -->
+                        <div class="tab-pane fade show active" id="risk-config" role="tabpanel">
+                            <div class="config-section">
+                                <h6 class="mb-3">Risk Management</h6>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Max Risk per Trade (%)</label>
+                                        <input type="range" class="form-range" min="0.5" max="10" step="0.1" id="maxRiskPerTrade" oninput="updateRangeValue(this, 'maxRiskPerTradeValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="maxRiskPerTradeValue">2.0</span>%</small></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Max Positions</label>
+                                        <input type="range" class="form-range" min="1" max="20" step="1" id="maxConcurrentPositions" oninput="updateRangeValue(this, 'maxConcurrentPositionsValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="maxConcurrentPositionsValue">6</span></small></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Max Sector Allocation (%)</label>
+                                        <input type="range" class="form-range" min="5" max="100" step="5" id="maxSectorAllocation" oninput="updateRangeValue(this, 'maxSectorAllocationValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="maxSectorAllocationValue">30</span>%</small></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Initial Capital ($)</label>
+                                        <input type="number" class="form-control" id="initialCapital" min="1000" max="10000000" step="1000" value="100000">
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Position Sizing Method</label>
+                                    <select class="form-select" id="positionSizeMethod">
+                                        <option value="fixed_risk">Fixed Risk</option>
+                                        <option value="equal_weight">Equal Weight</option>
+                                        <option value="kelly">Kelly Criterion</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Trading Rules Tab -->
+                        <div class="tab-pane fade" id="trading-config" role="tabpanel">
+                            <div class="config-section">
+                                <h6 class="mb-3">Trading Rules</h6>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Stop Loss (%)</label>
+                                        <input type="range" class="form-range" min="1" max="20" step="0.5" id="defaultStopLoss" oninput="updateRangeValue(this, 'defaultStopLossValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="defaultStopLossValue">5.0</span>%</small></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Profit Target (R)</label>
+                                        <input type="range" class="form-range" min="0.5" max="10" step="0.1" id="defaultProfitTarget" oninput="updateRangeValue(this, 'defaultProfitTargetValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="defaultProfitTargetValue">2.0</span>R</small></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Confidence Threshold</label>
+                                        <input type="range" class="form-range" min="0" max="1" step="0.01" id="defaultConfidenceThreshold" oninput="updateRangeValue(this, 'defaultConfidenceThresholdValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="defaultConfidenceThresholdValue">0.60</span></small></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Max Holding Days</label>
+                                        <input type="number" class="form-control" id="maxHoldingDays" min="1" max="500" value="60">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="trailingStopEnabled">
+                                            <label class="form-check-label" for="trailingStopEnabled">Trailing Stop</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="requireConfirmation">
+                                            <label class="form-check-label" for="requireConfirmation">Require Confirmation</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Optimization Tab -->
+                        <div class="tab-pane fade" id="optimization-config" role="tabpanel">
+                            <div class="config-section">
+                                <h6 class="mb-3">Parameter Optimization</h6>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-12">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableOptimization">
+                                            <label class="form-check-label" for="enableOptimization">
+                                                <strong>Enable Parameter Optimization</strong>
+                                                <small class="d-block text-muted">Automatically find best parameter combinations</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div id="optimizationControls" style="display: none;">
+                                    <div class="mb-3">
+                                        <label class="form-label">Stop Loss Range (%) <span class="parameter-impact medium"></span></label>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <select class="form-select" id="stopLossRange" multiple>
+                                                    <option value="0.03">3%</option>
+                                                    <option value="0.04">4%</option>
+                                                    <option value="0.05" selected>5%</option>
+                                                    <option value="0.06">6%</option>
+                                                    <option value="0.08">8%</option>
+                                                    <option value="0.10">10%</option>
+                                                </select>
+                                                <small class="text-muted">Hold Ctrl to select multiple values</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Profit Target Range (R) <span class="parameter-impact high"></span></label>
+                                        <select class="form-select" id="profitTargetRange" multiple>
+                                            <option value="1.5">1.5R</option>
+                                            <option value="2.0" selected>2.0R</option>
+                                            <option value="2.5">2.5R</option>
+                                            <option value="3.0">3.0R</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Confidence Range <span class="parameter-impact medium"></span></label>
+                                        <select class="form-select" id="confidenceRange" multiple>
+                                            <option value="0.5">0.5</option>
+                                            <option value="0.6" selected>0.6</option>
+                                            <option value="0.7">0.7</option>
+                                            <option value="0.8">0.8</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <label class="form-label">Training Period (days)</label>
+                                            <input type="number" class="form-control" id="trainingPeriodDays" min="50" max="1000" value="252">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Test Period (days)</label>
+                                            <input type="number" class="form-control" id="testPeriodDays" min="10" max="200" value="63">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Fitness Function <span class="parameter-impact high"></span></label>
+                                        <select class="form-select" id="fitnessFunction">
+                                            <option value="sharpe_ratio" selected>Sharpe Ratio</option>
+                                            <option value="calmar_ratio">Calmar Ratio</option>
+                                            <option value="profit_factor">Profit Factor</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Trade Frequency Penalty</label>
+                                        <input type="range" class="form-range" min="0" max="0.1" step="0.005" id="tradeFrequencyPenalty" value="0.01" oninput="updateRangeValue(this, 'tradeFrequencyPenaltyValue')">
+                                        <div class="text-center"><small class="text-muted"><span id="tradeFrequencyPenaltyValue">0.01</span></small></div>
+                                        <small class="text-muted">Penalty for excessive trading to prevent overfitting</small>
+                                    </div>
+                                    
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <label class="form-label">Min Trades Required</label>
+                                            <input type="number" class="form-control" id="minTradesRequired" min="1" max="100" value="3">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Max Optimization Iterations</label>
+                                            <input type="number" class="form-control" id="maxOptimizationIterations" min="10" max="1000" value="100">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="alert alert-info mt-3">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>Optimization Impact:</strong>
+                                    <span class="parameter-impact high"></span> High impact on performance
+                                    <span class="parameter-impact medium"></span> Medium impact
+                                    <span class="parameter-impact low"></span> Low impact
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Debug Tab -->
+                        <div class="tab-pane fade" id="debug-config" role="tabpanel">
+                            <div class="config-section">
+                                <h6 class="mb-3">Debug & Logging</h6>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Logging Level</label>
+                                        <select class="form-select" id="loggingLevel">
+                                            <option value="ERROR">Error</option>
+                                            <option value="WARNING">Warning</option>
+                                            <option value="INFO" selected>Info</option>
+                                            <option value="DEBUG">Debug</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="form-check form-switch mt-4">
+                                            <input class="form-check-input" type="checkbox" id="enableDebugMode">
+                                            <label class="form-check-label" for="enableDebugMode">Debug Mode</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="logToFile">
+                                            <label class="form-check-label" for="logToFile">Log to File</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="verboseOptimization">
+                                            <label class="form-check-label" for="verboseOptimization">Verbose Optimization</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label">Debug Max Trades</label>
+                                        <input type="number" class="form-control" id="debugMaxTrades" min="1" max="100" placeholder="Unlimited">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Debug Date Range (days)</label>
+                                        <input type="number" class="form-control" id="debugDateRangeDays" min="1" max="1000" placeholder="Full range">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Confidence Threshold</label>
-                        <input type="number" class="form-control" id="confidenceThreshold" name="confidence_threshold"
-                               step="0.01" min="0" max="1"
-                               value="{{ default_params.confidence_threshold if default_params else '0.6' }}">
+                </div>
+
+                <!-- Configuration Status -->
+                <div class="mb-3" id="configValidation" style="display: none;">
+                    <div class="alert alert-warning" id="validationAlert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span id="validationMessage">Configuration validation issues detected.</span>
                     </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Max Holding Days</label>
-                        <input type="number" class="form-control" id="maxHoldingDays" name="max_holding_days"
-                               min="1" max="365"
-                               value="{{ default_params.max_holding_days if default_params else '60' }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Position Sizing</label>
-                        <select class="form-select" id="positionSizing" name="position_size_method">
-                            <option value="fixed_risk">Fixed Risk</option>
-                            <option value="equal_weight">Equal Weight</option>
-                            <option value="kelly">Kelly Criterion</option>
-                        </select>
-                    </div>
-                    
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary" id="runBacktestBtn">
-                            <i class="bi bi-play-circle me-2"></i>
-                            Run Backtest
-                        </button>
-                    </div>
-                </form>
+                </div>
+
+                <!-- Run Backtest Button -->
+                <div class="d-grid">
+                    <button type="button" class="btn btn-primary" id="runBacktestBtn" onclick="runAdvancedBacktest()">
+                        <i class="bi bi-play-circle me-2"></i>
+                        Run Advanced Backtest
+                    </button>
+                </div>
                 
                 <!-- Progress -->
                 <div id="backtestProgress" class="mt-3" style="display: none;">
@@ -163,7 +433,7 @@
     </div>
     
     <!-- Results Display -->
-    <div class="col-lg-8">
+    <div class="col-lg-7">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">
@@ -175,53 +445,900 @@
                 <div class="text-center text-muted py-5">
                     <i class="bi bi-info-circle display-4 mb-3"></i>
                     <h5>No Backtest Results</h5>
-                    <p>Configure parameters and run a backtest to see results here.</p>
+                    <p>Configure parameters and run an advanced backtest to see detailed results here.</p>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Performance Metrics -->
-<div class="row mt-4" id="detailedResults" style="display: none;">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="bi bi-graph-up me-2"></i>
-                    Detailed Performance Analysis
-                </h5>
+<!-- Configuration Management Modal -->
+<div class="modal fade" id="saveConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Save Configuration</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="card-body">
-                <div id="performanceCharts"></div>
-                <div id="tradeHistory" class="mt-4"></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Configuration Name</label>
+                    <input type="text" class="form-control" id="configName" placeholder="Enter configuration name...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="configDescription" rows="3" placeholder="Optional description..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="confirmSaveConfig()">Save Configuration</button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Saved Configurations Modal -->
+<div class="modal fade" id="savedConfigsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Saved Configurations</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="savedConfigsList">
+                    <div class="text-center py-4">
+                        <div class="loading-spinner mx-auto"></div>
+                        <p class="mt-3">Loading saved configurations...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Comparison Modal -->
+<div class="modal fade" id="compareConfigsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content bg-dark">
+            <div class="modal-header">
+                <h5 class="modal-title">Configuration Comparison</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-6">
+                        <h6 class="text-trading-blue">Configuration A</h6>
+                        <select class="form-select mb-3" id="configASelect">
+                            <option value="">Select configuration...</option>
+                        </select>
+                        <div id="configADetails" class="config-details"></div>
+                    </div>
+                    <div class="col-6">
+                        <h6 class="text-trading-green">Configuration B</h6>
+                        <select class="form-select mb-3" id="configBSelect">
+                            <option value="">Select configuration...</option>
+                        </select>
+                        <div id="configBDetails" class="config-details"></div>
+                    </div>
+                </div>
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h6 class="text-trading-yellow">Differences</h6>
+                        <div id="configDifferences" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="runComparisonBacktest()">Compare Performance</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="configFileInput" accept=".json" style="display: none;" onchange="handleConfigImport(event)">
+
 <script>
+// Global variables
 let backtestInProgress = false;
 let selectedInstruments = [];
+let currentConfig = {};
+let availablePresets = [];
 
-document.getElementById('backtestForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    runBacktest();
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    initializePage();
+    loadSelectedInstruments();
+    loadAvailablePresets();
+    
+    // Set up real-time validation
+    setupConfigurationValidation();
 });
 
-function toggleInstrumentsList() {
-    const list = document.getElementById('instrumentsList');
-    const toggleText = document.getElementById('toggleText');
+function initializePage() {
+    // Set default dates
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setFullYear(endDate.getFullYear() - 1);
     
-    if (list.style.display === 'none') {
-        list.style.display = 'block';
-        toggleText.textContent = 'Hide';
-    } else {
-        list.style.display = 'none';
-        toggleText.textContent = 'Show';
+    document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+    
+    // Set default switches
+    document.getElementById('walkForward').checked = true;
+    document.getElementById('regimeAware').checked = true;
+    document.getElementById('trailingStopEnabled').checked = true;
+    document.getElementById('requireConfirmation').checked = true;
+    
+    // Setup optimization toggle
+    document.getElementById('enableOptimization').addEventListener('change', function() {
+        const controls = document.getElementById('optimizationControls');
+        controls.style.display = this.checked ? 'block' : 'none';
+    });
+    
+    // Initialize range values
+    setRangeValue('maxRiskPerTrade', 2.0);
+    setRangeValue('maxConcurrentPositions', 6);
+    setRangeValue('maxSectorAllocation', 30);
+    setRangeValue('defaultStopLoss', 5.0);
+    setRangeValue('defaultProfitTarget', 2.0);
+    setRangeValue('defaultConfidenceThreshold', 0.6);
+    setRangeValue('tradeFrequencyPenalty', 0.01);
+}
+
+function loadAvailablePresets() {
+    fetch('/backtest/api/config/presets')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                availablePresets = data.data;
+                const select = document.getElementById('configPreset');
+                select.innerHTML = '<option value="">Select Preset...</option>';
+                
+                data.data.forEach(preset => {
+                    const option = document.createElement('option');
+                    option.value = preset.name;
+                    option.textContent = `${preset.display_name} - ${preset.description}`;
+                    select.appendChild(option);
+                });
+            }
+        })
+        .catch(error => console.error('Error loading presets:', error));
+}
+
+function loadPreset() {
+    const presetName = document.getElementById('configPreset').value;
+    if (!presetName) return;
+    
+    fetch('/backtest/api/config/load', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({preset_name: presetName})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentConfig = data.data;
+            populateFormFromConfig(currentConfig);
+            validateCurrentConfiguration();
+        } else {
+            showAlert('Error loading preset: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error loading preset:', error);
+        showAlert('Failed to load preset', 'danger');
+    });
+}
+
+function populateFormFromConfig(config) {
+    // Risk management
+    if (config.risk_management) {
+        const rm = config.risk_management;
+        setRangeValue('maxRiskPerTrade', rm.max_risk_per_trade * 100);
+        setRangeValue('maxConcurrentPositions', rm.max_concurrent_positions);
+        setRangeValue('maxSectorAllocation', rm.max_sector_allocation * 100);
+        document.getElementById('initialCapital').value = rm.initial_capital;
+        document.getElementById('positionSizeMethod').value = rm.position_size_method;
+    }
+    
+    // Trading
+    if (config.trading) {
+        const tc = config.trading;
+        setRangeValue('defaultStopLoss', tc.default_stop_loss_pct * 100);
+        setRangeValue('defaultProfitTarget', tc.default_profit_target_r);
+        setRangeValue('defaultConfidenceThreshold', tc.default_confidence_threshold);
+        document.getElementById('maxHoldingDays').value = tc.max_holding_days;
+        document.getElementById('trailingStopEnabled').checked = tc.trailing_stop_enabled;
+        document.getElementById('requireConfirmation').checked = tc.require_confirmation;
+    }
+    
+    // Optimization
+    if (config.optimization) {
+        const oc = config.optimization;
+        setMultiSelectValues('stopLossRange', oc.stop_loss_range);
+        setMultiSelectValues('profitTargetRange', oc.profit_target_range);
+        setMultiSelectValues('confidenceRange', oc.confidence_range);
+        document.getElementById('trainingPeriodDays').value = oc.training_period_days;
+        document.getElementById('testPeriodDays').value = oc.test_period_days;
+        document.getElementById('fitnessFunction').value = oc.fitness_function;
+        setRangeValue('tradeFrequencyPenalty', oc.trade_frequency_penalty);
+        document.getElementById('minTradesRequired').value = oc.min_trades_required;
+        document.getElementById('enableOptimization').checked = oc.enable_optimization || false;
+        document.getElementById('maxOptimizationIterations').value = oc.max_optimization_iterations || 100;
+        
+        // Show/hide optimization controls
+        const controls = document.getElementById('optimizationControls');
+        controls.style.display = oc.enable_optimization ? 'block' : 'none';
+    }
+    
+    // Debug
+    if (config.debug) {
+        const dc = config.debug;
+        document.getElementById('loggingLevel').value = dc.logging_level;
+        document.getElementById('enableDebugMode').checked = dc.enable_debug_mode;
+        document.getElementById('logToFile').checked = dc.log_to_file;
+        document.getElementById('verboseOptimization').checked = dc.verbose_optimization;
+        if (dc.debug_max_trades) document.getElementById('debugMaxTrades').value = dc.debug_max_trades;
+        if (dc.debug_date_range_days) document.getElementById('debugDateRangeDays').value = dc.debug_date_range_days;
     }
 }
 
+function setRangeValue(elementId, value) {
+    const element = document.getElementById(elementId);
+    element.value = value;
+    updateRangeValue(element, elementId + 'Value');
+}
+
+function setMultiSelectValues(elementId, values) {
+    const select = document.getElementById(elementId);
+    Array.from(select.options).forEach(option => {
+        option.selected = values.includes(parseFloat(option.value));
+    });
+}
+
+function updateRangeValue(range, displayId) {
+    const value = parseFloat(range.value);
+    const display = document.getElementById(displayId);
+    
+    if (range.id === 'defaultConfidenceThreshold') {
+        display.textContent = value.toFixed(2);
+    } else if (range.id.includes('Percentage') || range.id.includes('Risk') || range.id.includes('Stop') || range.id.includes('Allocation')) {
+        display.textContent = value.toFixed(1);
+    } else {
+        display.textContent = value.toString();
+    }
+}
+
+function getCurrentConfiguration() {
+    return {
+        risk_management: {
+            max_risk_per_trade: parseFloat(document.getElementById('maxRiskPerTrade').value) / 100,
+            max_concurrent_positions: parseInt(document.getElementById('maxConcurrentPositions').value),
+            max_sector_allocation: parseFloat(document.getElementById('maxSectorAllocation').value) / 100,
+            initial_capital: parseFloat(document.getElementById('initialCapital').value),
+            position_size_method: document.getElementById('positionSizeMethod').value,
+            max_similar_etfs: 2,
+            min_position_size: 100,
+            max_position_size: 10000,
+            max_total_risk: 0.08,
+            correlation_adjustment: true
+        },
+        trading: {
+            default_stop_loss_pct: parseFloat(document.getElementById('defaultStopLoss').value) / 100,
+            default_profit_target_r: parseFloat(document.getElementById('defaultProfitTarget').value),
+            default_confidence_threshold: parseFloat(document.getElementById('defaultConfidenceThreshold').value),
+            max_holding_days: parseInt(document.getElementById('maxHoldingDays').value),
+            trailing_stop_enabled: document.getElementById('trailingStopEnabled').checked,
+            require_confirmation: document.getElementById('requireConfirmation').checked,
+            allow_same_day_entry_exit: false,
+            trailing_stop_trigger: 1.0,
+            regime_aware_trading: true,
+            regime_override_confidence: 0.8,
+            max_signals_per_day: 5,
+            signal_strength_weight: 0.3,
+            confidence_weight: 0.7
+        },
+        optimization: {
+            stop_loss_range: Array.from(document.getElementById('stopLossRange').selectedOptions).map(opt => parseFloat(opt.value)),
+            profit_target_range: Array.from(document.getElementById('profitTargetRange').selectedOptions).map(opt => parseFloat(opt.value)),
+            confidence_range: Array.from(document.getElementById('confidenceRange').selectedOptions).map(opt => parseFloat(opt.value)),
+            training_period_days: parseInt(document.getElementById('trainingPeriodDays').value),
+            test_period_days: parseInt(document.getElementById('testPeriodDays').value),
+            fitness_function: document.getElementById('fitnessFunction').value,
+            trade_frequency_penalty: parseFloat(document.getElementById('tradeFrequencyPenalty').value),
+            min_trades_required: parseInt(document.getElementById('minTradesRequired').value),
+            enable_optimization: document.getElementById('enableOptimization').checked,
+            max_optimization_iterations: parseInt(document.getElementById('maxOptimizationIterations').value)
+        },
+        debug: {
+            logging_level: document.getElementById('loggingLevel').value,
+            enable_debug_mode: document.getElementById('enableDebugMode').checked,
+            log_to_file: document.getElementById('logToFile').checked,
+            verbose_optimization: document.getElementById('verboseOptimization').checked,
+            debug_max_trades: document.getElementById('debugMaxTrades').value ? parseInt(document.getElementById('debugMaxTrades').value) : null,
+            debug_date_range_days: document.getElementById('debugDateRangeDays').value ? parseInt(document.getElementById('debugDateRangeDays').value) : null,
+            log_file_path: "backtest_debug.log",
+            log_to_console: true,
+            verbose_trade_decisions: false,
+            verbose_regime_filtering: false,
+            verbose_performance_calc: false,
+            validate_data_integrity: true,
+            warn_missing_data: true,
+            strict_date_validation: true
+        },
+        config_name: "custom",
+        config_version: "1.0",
+        description: "Custom configuration from web interface"
+    };
+}
+
+function getUISettings() {
+    return {
+        setup_name: document.getElementById('setupName').value,
+        start_date: document.getElementById('startDate').value,
+        end_date: document.getElementById('endDate').value,
+        walk_forward: document.getElementById('walkForward').checked,
+        regime_aware: document.getElementById('regimeAware').checked,
+        selected_instruments: selectedInstruments.length > 0 ? selectedInstruments.map(inst => inst.symbol) : null
+    };
+}
+
+function setupConfigurationValidation() {
+    // Add change listeners to all form elements
+    const formElements = document.querySelectorAll('#risk-config input, #risk-config select, #trading-config input, #trading-config select, #optimization-config input, #optimization-config select, #debug-config input, #debug-config select');
+    
+    formElements.forEach(element => {
+        element.addEventListener('change', validateCurrentConfiguration);
+        element.addEventListener('input', validateCurrentConfiguration);
+    });
+}
+
+function validateCurrentConfiguration() {
+    const config = getCurrentConfiguration();
+    
+    fetch('/backtest/api/config/validate-full', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const validationDiv = document.getElementById('configValidation');
+            const alert = document.getElementById('validationAlert');
+            const message = document.getElementById('validationMessage');
+            
+            if (data.data.valid) {
+                validationDiv.style.display = 'none';
+            } else {
+                validationDiv.style.display = 'block';
+                alert.className = 'alert alert-warning';
+                message.textContent = data.data.summary;
+            }
+        }
+    })
+    .catch(error => console.error('Validation error:', error));
+}
+
+function runAdvancedBacktest() {
+    if (backtestInProgress) return;
+    
+    const config = getCurrentConfiguration();
+    const uiSettings = getUISettings();
+    
+    backtestInProgress = true;
+    const button = document.getElementById('runBacktestBtn');
+    const progress = document.getElementById('backtestProgress');
+    const progressBar = document.getElementById('progressBar');
+    const status = document.getElementById('progressStatus');
+    
+    // Show progress
+    progress.style.display = 'block';
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-hourglass-split me-2"></i> Running Advanced Backtest...';
+    
+    // Validate configuration first
+    progressBar.style.width = '10%';
+    status.textContent = 'Validating configuration...';
+    
+    fetch('/backtest/api/config/validate-full', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.data.valid) {
+            progressBar.style.width = '25%';
+            status.textContent = 'Configuration validated. Running backtest...';
+            
+            return fetch('/backtest/api/run-with-config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    config: config,
+                    ui_settings: uiSettings
+                })
+            });
+        } else {
+            throw new Error('Configuration validation failed: ' + data.data.summary);
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressBar.style.width = '100%';
+        
+        if (data.success) {
+            status.textContent = 'Advanced backtest completed successfully!';
+            displayResults(data.data);
+        } else {
+            status.textContent = 'Backtest failed: ' + data.error;
+            displayError(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Backtest error:', error);
+        progressBar.style.width = '100%';
+        progressBar.classList.add('bg-danger');
+        status.textContent = 'Error: ' + error.message;
+        displayError(error.message);
+    })
+    .finally(() => {
+        backtestInProgress = false;
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-play-circle me-2"></i> Run Advanced Backtest';
+    });
+}
+
+function saveCurrentConfig() {
+    const modal = new bootstrap.Modal(document.getElementById('saveConfigModal'));
+    modal.show();
+}
+
+function confirmSaveConfig() {
+    const name = document.getElementById('configName').value.trim();
+    const description = document.getElementById('configDescription').value.trim();
+    
+    if (!name) {
+        showAlert('Please enter a configuration name', 'warning');
+        return;
+    }
+    
+    const config = getCurrentConfiguration();
+    config.config_name = name;
+    config.description = description || config.description;
+    
+    fetch('/backtest/api/config/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            config: config,
+            name: name
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Configuration saved successfully', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('saveConfigModal')).hide();
+            
+            // Clear form
+            document.getElementById('configName').value = '';
+            document.getElementById('configDescription').value = '';
+        } else {
+            showAlert('Error saving configuration: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Save error:', error);
+        showAlert('Failed to save configuration', 'danger');
+    });
+}
+
+function exportConfiguration() {
+    const config = getCurrentConfiguration();
+    
+    fetch('/backtest/api/config/export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Download the configuration
+            const blob = new Blob([JSON.stringify(data.data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = data.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showAlert('Configuration exported successfully', 'success');
+        } else {
+            showAlert('Error exporting configuration: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Export error:', error);
+        showAlert('Failed to export configuration', 'danger');
+    });
+}
+
+function importConfiguration() {
+    document.getElementById('configFileInput').click();
+}
+
+function handleConfigImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const config = JSON.parse(e.target.result);
+            populateFormFromConfig(config);
+            validateCurrentConfiguration();
+            showAlert('Configuration imported successfully', 'success');
+        } catch (error) {
+            showAlert('Invalid configuration file', 'danger');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function resetToDefaults() {
+    if (confirm('Reset all parameters to default values?')) {
+        loadPreset('default');
+    }
+}
+
+function showSavedConfigurations() {
+    const modal = new bootstrap.Modal(document.getElementById('savedConfigsModal'));
+    modal.show();
+    
+    fetch('/backtest/api/config/saved')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displaySavedConfigurations(data.data);
+            } else {
+                document.getElementById('savedConfigsList').innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Failed to load saved configurations
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading saved configs:', error);
+            document.getElementById('savedConfigsList').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Error loading configurations
+                </div>
+            `;
+        });
+}
+
+function displaySavedConfigurations(configs) {
+    const container = document.getElementById('savedConfigsList');
+    
+    if (configs.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-4">
+                <i class="bi bi-folder2-open display-4 text-muted mb-3"></i>
+                <h5>No Saved Configurations</h5>
+                <p class="text-muted">Save your current configuration to see it here.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="table-responsive">
+            <table class="table table-dark table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Created</th>
+                        <th>Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${configs.map(config => `
+                        <tr>
+                            <td><strong>${config.name}</strong></td>
+                            <td><small class="text-muted">${config.description || 'No description'}</small></td>
+                            <td><small>${formatDate(config.created_at)}</small></td>
+                            <td><small>${formatDate(config.modified_at)}</small></td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="loadSavedConfiguration('${config.filename}')">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteSavedConfiguration('${config.filename}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function loadSavedConfiguration(filename) {
+    fetch('/backtest/api/config/load', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({config_file: filename})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentConfig = data.data;
+            populateFormFromConfig(currentConfig);
+            validateCurrentConfiguration();
+            showAlert('Configuration loaded successfully', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('savedConfigsModal')).hide();
+        } else {
+            showAlert('Error loading configuration: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error loading configuration:', error);
+        showAlert('Failed to load configuration', 'danger');
+    });
+}
+
+function deleteSavedConfiguration(filename) {
+    if (confirm(`Delete configuration file "${filename}"?`)) {
+        // This would require a delete endpoint - for now just show a message
+        showAlert('Delete functionality not yet implemented', 'info');
+    }
+}
+
+function compareConfigurations() {
+    const modal = new bootstrap.Modal(document.getElementById('compareConfigsModal'));
+    modal.show();
+    
+    // Load available configurations for comparison
+    Promise.all([
+        fetch('/backtest/api/config/presets').then(r => r.json()),
+        fetch('/backtest/api/config/saved').then(r => r.json())
+    ]).then(([presets, saved]) => {
+        const allConfigs = [];
+        
+        if (presets.success) {
+            allConfigs.push(...presets.data.map(p => ({
+                name: p.display_name,
+                value: 'preset:' + p.name,
+                type: 'preset'
+            })));
+        }
+        
+        if (saved.success) {
+            allConfigs.push(...saved.data.map(s => ({
+                name: s.name,
+                value: 'saved:' + s.filename,
+                type: 'saved'
+            })));
+        }
+        
+        // Add current configuration
+        allConfigs.push({
+            name: 'Current Configuration',
+            value: 'current',
+            type: 'current'
+        });
+        
+        // Populate both selects
+        const selectA = document.getElementById('configASelect');
+        const selectB = document.getElementById('configBSelect');
+        
+        [selectA, selectB].forEach(select => {
+            select.innerHTML = '<option value="">Select configuration...</option>';
+            allConfigs.forEach(config => {
+                const option = document.createElement('option');
+                option.value = config.value;
+                option.textContent = `${config.name} (${config.type})`;
+                select.appendChild(option);
+            });
+        });
+        
+        // Add change listeners
+        selectA.addEventListener('change', () => loadConfigForComparison('A', selectA.value));
+        selectB.addEventListener('change', () => loadConfigForComparison('B', selectB.value));
+    }).catch(error => {
+        console.error('Error loading configurations for comparison:', error);
+        showAlert('Failed to load configurations for comparison', 'danger');
+    });
+}
+
+function loadConfigForComparison(side, configValue) {
+    if (!configValue) return;
+    
+    let configPromise;
+    
+    if (configValue === 'current') {
+        configPromise = Promise.resolve({success: true, data: getCurrentConfiguration()});
+    } else if (configValue.startsWith('preset:')) {
+        const presetName = configValue.substring(7);
+        configPromise = fetch('/backtest/api/config/load', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({preset_name: presetName})
+        }).then(r => r.json());
+    } else if (configValue.startsWith('saved:')) {
+        const filename = configValue.substring(6);
+        configPromise = fetch('/backtest/api/config/load', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({config_file: filename})
+        }).then(r => r.json());
+    }
+    
+    configPromise.then(data => {
+        if (data.success) {
+            displayConfigurationDetails(side, data.data);
+            compareConfigurationDetails();
+        } else {
+            showAlert(`Error loading configuration for comparison: ${data.error}`, 'danger');
+        }
+    }).catch(error => {
+        console.error('Error loading configuration:', error);
+        showAlert('Failed to load configuration for comparison', 'danger');
+    });
+}
+
+function displayConfigurationDetails(side, config) {
+    const container = document.getElementById(`config${side}Details`);
+    
+    container.innerHTML = `
+        <div class="config-summary">
+            <h6 class="text-muted mb-2">Risk Management</h6>
+            <small>
+                Risk per trade: ${(config.risk_management.max_risk_per_trade * 100).toFixed(1)}%<br>
+                Max positions: ${config.risk_management.max_concurrent_positions}<br>
+                Initial capital: $${config.risk_management.initial_capital.toLocaleString()}
+            </small>
+            
+            <h6 class="text-muted mb-2 mt-3">Trading Rules</h6>
+            <small>
+                Stop loss: ${(config.trading.default_stop_loss_pct * 100).toFixed(1)}%<br>
+                Profit target: ${config.trading.default_profit_target_r}R<br>
+                Confidence: ${config.trading.default_confidence_threshold}
+            </small>
+            
+            <h6 class="text-muted mb-2 mt-3">Optimization</h6>
+            <small>
+                Enabled: ${config.optimization.enable_optimization ? 'Yes' : 'No'}<br>
+                Fitness: ${config.optimization.fitness_function}<br>
+                Training period: ${config.optimization.training_period_days} days
+            </small>
+        </div>
+    `;
+    
+    // Store config data for comparison
+    window[`config${side}Data`] = config;
+}
+
+function compareConfigurationDetails() {
+    if (!window.configAData || !window.configBData) return;
+    
+    const differences = findConfigurationDifferences(window.configAData, window.configBData);
+    const container = document.getElementById('configDifferences');
+    
+    if (differences.length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="bi bi-check-circle me-2"></i>
+                Configurations are identical
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div class="table-responsive">
+                <table class="table table-dark table-sm">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th class="text-trading-blue">Configuration A</th>
+                            <th class="text-trading-green">Configuration B</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${differences.map(diff => `
+                            <tr>
+                                <td><small>${diff.parameter}</small></td>
+                                <td><small class="text-trading-blue">${diff.valueA}</small></td>
+                                <td><small class="text-trading-green">${diff.valueB}</small></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+}
+
+function findConfigurationDifferences(configA, configB) {
+    const differences = [];
+    
+    // Compare key parameters
+    const comparisons = [
+        ['Risk per trade', configA.risk_management.max_risk_per_trade, configB.risk_management.max_risk_per_trade, v => (v * 100).toFixed(1) + '%'],
+        ['Max positions', configA.risk_management.max_concurrent_positions, configB.risk_management.max_concurrent_positions],
+        ['Stop loss', configA.trading.default_stop_loss_pct, configB.trading.default_stop_loss_pct, v => (v * 100).toFixed(1) + '%'],
+        ['Profit target', configA.trading.default_profit_target_r, configB.trading.default_profit_target_r, v => v + 'R'],
+        ['Confidence threshold', configA.trading.default_confidence_threshold, configB.trading.default_confidence_threshold],
+        ['Optimization enabled', configA.optimization.enable_optimization, configB.optimization.enable_optimization, v => v ? 'Yes' : 'No'],
+        ['Fitness function', configA.optimization.fitness_function, configB.optimization.fitness_function],
+        ['Training period', configA.optimization.training_period_days, configB.optimization.training_period_days, v => v + ' days'],
+        ['Debug mode', configA.debug.enable_debug_mode, configB.debug.enable_debug_mode, v => v ? 'Yes' : 'No'],
+        ['Logging level', configA.debug.logging_level, configB.debug.logging_level]
+    ];
+    
+    comparisons.forEach(([param, valueA, valueB, formatter]) => {
+        if (valueA !== valueB) {
+            differences.push({
+                parameter: param,
+                valueA: formatter ? formatter(valueA) : valueA,
+                valueB: formatter ? formatter(valueB) : valueB
+            });
+        }
+    });
+    
+    return differences;
+}
+
+function runComparisonBacktest() {
+    if (!window.configAData || !window.configBData) {
+        showAlert('Please select both configurations to compare', 'warning');
+        return;
+    }
+    
+    showAlert('Comparison backtesting feature coming soon!', 'info');
+}
+
+function formatDate(dateString) {
+    return new Date(dateString).toLocaleDateString();
+}
+
+function showAlert(message, type) {
+    // Create and show a temporary alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 400px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.parentNode.removeChild(alertDiv);
+        }
+    }, 5000);
+}
+
+// Existing functions for selected instruments and results display
 function loadSelectedInstruments() {
     const stored = sessionStorage.getItem('selectedInstruments');
     if (stored) {
@@ -260,99 +1377,23 @@ function displaySelectedInstruments() {
     `).join('');
 }
 
+function toggleInstrumentsList() {
+    const list = document.getElementById('instrumentsList');
+    const toggleText = document.getElementById('toggleText');
+    
+    if (list.style.display === 'none') {
+        list.style.display = 'block';
+        toggleText.textContent = 'Hide';
+    } else {
+        list.style.display = 'none';
+        toggleText.textContent = 'Show';
+    }
+}
+
 function removeInstrument(symbol) {
     selectedInstruments = selectedInstruments.filter(inst => inst.symbol !== symbol);
     sessionStorage.setItem('selectedInstruments', JSON.stringify(selectedInstruments));
     displaySelectedInstruments();
-}
-
-function clearSelectedInstruments() {
-    selectedInstruments = [];
-    sessionStorage.removeItem('selectedInstruments');
-    displaySelectedInstruments();
-}
-
-function runBacktest() {
-    if (backtestInProgress) return;
-    
-    backtestInProgress = true;
-    const form = document.getElementById('backtestForm');
-    const formData = new FormData(form);
-    const button = document.getElementById('runBacktestBtn');
-    const progress = document.getElementById('backtestProgress');
-    const progressBar = document.getElementById('progressBar');
-    const status = document.getElementById('progressStatus');
-    
-    // Show progress
-    progress.style.display = 'block';
-    button.disabled = true;
-    button.innerHTML = '<i class="bi bi-hourglass-split me-2"></i> Running...';
-    
-    // Prepare configuration
-    const config = {
-        setup_name: formData.get('setup_name'),
-        start_date: formData.get('start_date'),
-        end_date: formData.get('end_date'),
-        walk_forward: formData.has('walk_forward'),
-        regime_aware: formData.has('regime_aware'),
-        stop_loss_pct: parseFloat(formData.get('stop_loss_pct')),
-        profit_target_r: parseFloat(formData.get('profit_target_r')),
-        confidence_threshold: parseFloat(formData.get('confidence_threshold')),
-        max_holding_days: parseInt(formData.get('max_holding_days')),
-        position_size_method: formData.get('position_size_method'),
-        selected_instruments: selectedInstruments.length > 0 ? selectedInstruments.map(inst => inst.symbol) : null
-    };
-    
-    // Validate parameters first
-    fetch('/backtest/api/validate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(config)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.data.valid) {
-            // Parameters are valid, run backtest
-            progressBar.style.width = '25%';
-            status.textContent = 'Running backtest...';
-            
-            return fetch('/backtest/api/run', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(config)
-            });
-        } else {
-            throw new Error('Validation failed: ' + data.data.errors.join(', '));
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        progressBar.style.width = '100%';
-        
-        if (data.success) {
-            status.textContent = 'Backtest completed successfully!';
-            displayResults(data.data);
-        } else {
-            status.textContent = 'Backtest failed: ' + data.error;
-            displayError(data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Backtest error:', error);
-        progressBar.style.width = '100%';
-        progressBar.classList.add('bg-danger');
-        status.textContent = 'Error: ' + error.message;
-        displayError(error.message);
-    })
-    .finally(() => {
-        backtestInProgress = false;
-        button.disabled = false;
-        button.innerHTML = '<i class="bi bi-play-circle me-2"></i> Run Backtest';
-    });
 }
 
 function displayResults(results) {
@@ -369,7 +1410,7 @@ function displayResults(results) {
         headerHtml = `
             <div class="alert alert-success mb-3">
                 <i class="bi bi-check-circle me-2"></i>
-                <strong>Backtest Results for Selected Instruments:</strong>
+                <strong>Advanced Backtest Results for Selected Instruments:</strong>
                 ${results.selected_instruments.length} instruments from screener
                 (${results.selected_instruments.join(', ')})
             </div>
@@ -382,9 +1423,6 @@ function displayResults(results) {
     } else {
         displaySingleSetupResults(results, headerHtml);
     }
-    
-    // Show detailed results section
-    document.getElementById('detailedResults').style.display = 'block';
 }
 
 function displaySingleSetupResults(results, headerHtml = '') {
@@ -567,31 +1605,57 @@ function displayError(error) {
     container.innerHTML = `
         <div class="alert alert-danger">
             <i class="bi bi-exclamation-triangle me-2"></i>
-            <strong>Backtest Error:</strong> ${error}
+            <strong>Advanced Backtest Error:</strong> ${error}
         </div>
     `;
 }
-
-// Set default values on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Set position sizing default
-    {% if default_params and default_params.position_size_method %}
-    document.getElementById('positionSizing').value = "{{ default_params.position_size_method }}";
-    {% endif %}
-    
-    // Load selected instruments from screener
-    loadSelectedInstruments();
-    
-    // Check if coming from screener
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('source') === 'screener') {
-        // Show a toast notification
-        setTimeout(() => {
-            if (selectedInstruments.length > 0) {
-                alert(`Ready to backtest ${selectedInstruments.length} instruments selected from screener results.`);
-            }
-        }, 500);
-    }
-});
 </script>
+
+<style>
+.config-section {
+    min-height: 300px;
+    padding: 15px;
+}
+
+.metric-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.nav-pills .nav-link {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-radius: 20px;
+    margin: 0 2px;
+}
+
+.nav-pills .nav-link.active {
+    background: var(--trading-blue);
+}
+
+.form-range::-webkit-slider-thumb {
+    background: var(--trading-blue);
+}
+
+.form-range::-moz-range-thumb {
+    background: var(--trading-blue);
+    border: none;
+}
+
+.form-select[multiple] {
+    min-height: 120px;
+}
+
+.tab-content {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    margin-top: 10px;
+}
+
+.form-check-input:checked {
+    background-color: var(--trading-blue);
+    border-color: var(--trading-blue);
+}
+</style>
 {% endblock %}
