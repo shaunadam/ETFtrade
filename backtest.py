@@ -276,7 +276,8 @@ class BacktestEngine:
                      setup_types: Optional[List[SetupType]] = None,
                      walk_forward: bool = False,
                      regime_aware: bool = True,
-                     instrument_types: Optional[List[str]] = None) -> Dict:
+                     instrument_types: Optional[List[str]] = None,
+                     selected_instruments: Optional[List[str]] = None) -> Dict:
         """
         Run comprehensive backtest with walk-forward validation.
         
@@ -286,6 +287,8 @@ class BacktestEngine:
             setup_types: List of setups to test (None for all)
             walk_forward: Enable walk-forward validation
             regime_aware: Include regime analysis
+            instrument_types: Filter by instrument types (ETF, stock)
+            selected_instruments: Filter by specific symbols (e.g., ['SPY', 'QQQ'])
             
         Returns:
             Dictionary with backtest results
@@ -307,18 +310,19 @@ class BacktestEngine:
         
         if walk_forward:
             return self._run_walk_forward_backtest(
-                trading_days, setup_types, regime_aware, instrument_types
+                trading_days, setup_types, regime_aware, instrument_types, selected_instruments
             )
         else:
             return self._run_standard_backtest(
-                trading_days, setup_types, regime_aware, instrument_types
+                trading_days, setup_types, regime_aware, instrument_types, selected_instruments
             )
     
     def _run_standard_backtest(self, 
                               trading_days: List[datetime],
                               setup_types: List[SetupType],
                               regime_aware: bool,
-                              instrument_types: Optional[List[str]] = None) -> Dict:
+                              instrument_types: Optional[List[str]] = None,
+                              selected_instruments: Optional[List[str]] = None) -> Dict:
         """Run standard backtesting without walk-forward validation."""
         
         for current_date in trading_days:
@@ -329,7 +333,7 @@ class BacktestEngine:
             
             # Look for new trade opportunities
             if len(self.current_positions) < self.max_concurrent_positions:
-                signals = self._get_signals_for_date(current_date, setup_types, regime_aware, instrument_types)
+                signals = self._get_signals_for_date(current_date, setup_types, regime_aware, instrument_types, selected_instruments)
                 
                 for signal in signals:
                     if self._can_enter_trade(signal, current_date):
@@ -356,7 +360,8 @@ class BacktestEngine:
                                   trading_days: List[datetime],
                                   setup_types: List[SetupType],
                                   regime_aware: bool,
-                                  instrument_types: Optional[List[str]] = None) -> Dict:
+                                  instrument_types: Optional[List[str]] = None,
+                                  selected_instruments: Optional[List[str]] = None) -> Dict:
         """Run walk-forward backtesting with parameter optimization."""
         
         # Walk-forward parameters
@@ -385,7 +390,7 @@ class BacktestEngine:
             # Optimize parameters on training data
             if training_days:
                 print(f"  Optimizing on training data: {training_days[0].date()} to {training_days[-1].date()}")
-                optimal_params = self._optimize_parameters(training_days, setup_types, regime_aware)
+                optimal_params = self._optimize_parameters(training_days, setup_types, regime_aware, selected_instruments)
                 optimization_history.append({
                     'period': f"{training_days[0].date()}_{training_days[-1].date()}",
                     'optimal_params': asdict(optimal_params)
@@ -403,7 +408,7 @@ class BacktestEngine:
             print(f"  Testing with: stop_loss={optimal_params.stop_loss_pct:.1%}, target={optimal_params.profit_target_r:.1f}R, conf={optimal_params.confidence_threshold:.2f}")
             
             # Test on out-of-sample period with optimized parameters
-            period_result = self._run_standard_backtest(test_days, setup_types, regime_aware, instrument_types)
+            period_result = self._run_standard_backtest(test_days, setup_types, regime_aware, instrument_types, selected_instruments)
             period_result['optimization_params'] = asdict(optimal_params)
             
             results.append(period_result)
@@ -518,11 +523,21 @@ class BacktestEngine:
                              current_date: datetime,
                              setup_types: List[SetupType],
                              regime_aware: bool,
-                             instrument_types: Optional[List[str]] = None) -> List[TradeSignal]:
+                             instrument_types: Optional[List[str]] = None,
+                             selected_instruments: Optional[List[str]] = None) -> List[TradeSignal]:
         """Get trade signals for a specific date."""
         
         # Get symbols from setup manager with instrument type filtering
         symbols = self.setup_manager.get_all_symbols(instrument_types)
+        
+        # Apply selected instruments filter for performance optimization
+        if selected_instruments:
+            symbols = [s for s in symbols if s in selected_instruments]
+            print(f"  Filtering to {len(symbols)} selected instruments: {selected_instruments}")
+        
+        # Early exit if no symbols to process
+        if not symbols:
+            return []
         
         # Get current regime if regime-aware
         current_regime = None
@@ -1143,7 +1158,8 @@ class BacktestEngine:
     def _optimize_parameters(self, 
                            training_days: List[datetime],
                            setup_types: List[SetupType],
-                           regime_aware: bool) -> OptimizationParameters:
+                           regime_aware: bool,
+                           selected_instruments: Optional[List[str]] = None) -> OptimizationParameters:
         """Optimize parameters using grid search on training data."""
         
         # Parameter ranges to test
@@ -1167,7 +1183,7 @@ class BacktestEngine:
             
             # Backtest with these parameters
             try:
-                score = self._evaluate_parameters(test_params, training_days, setup_types, regime_aware)
+                score = self._evaluate_parameters(test_params, training_days, setup_types, regime_aware, selected_instruments)
                 
                 if score > best_score:
                     best_score = score
@@ -1183,7 +1199,8 @@ class BacktestEngine:
                            params: OptimizationParameters,
                            training_days: List[datetime],
                            setup_types: List[SetupType],
-                           regime_aware: bool) -> float:
+                           regime_aware: bool,
+                           selected_instruments: Optional[List[str]] = None) -> float:
         """Evaluate parameter set and return fitness score."""
         
         # Save current state
@@ -1209,7 +1226,7 @@ class BacktestEngine:
                 self._update_positions(current_date)
                 
                 if len(self.current_positions) < self.max_concurrent_positions:
-                    signals = self._get_signals_for_date(current_date, setup_types, regime_aware)
+                    signals = self._get_signals_for_date(current_date, setup_types, regime_aware, None, selected_instruments)
                     
                     # Filter by confidence threshold
                     signals = [s for s in signals if s.confidence >= params.confidence_threshold]

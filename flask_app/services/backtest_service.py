@@ -99,23 +99,14 @@ class BacktestService:
             
             # Run backtest with selected instruments if provided
             if setup_name == 'all':
-                if selected_instruments:
-                    # Run backtests for all setups but only on selected instruments
-                    results = self._backtest_selected_instruments(
-                        selected_instruments,
-                        start_date,
-                        end_date,
-                        optimization_params,
-                        walk_forward
-                    )
-                else:
-                    results = self.backtest_engine.run_backtest(
-                        start_date=start_date,
-                        end_date=end_date,
-                        setup_types=None,  # None means all setups
-                        walk_forward=walk_forward,
-                        regime_aware=regime_aware
-                    )
+                results = self.backtest_engine.run_backtest(
+                    start_date=start_date,
+                    end_date=end_date,
+                    setup_types=None,  # None means all setups
+                    walk_forward=walk_forward,
+                    regime_aware=regime_aware,
+                    selected_instruments=selected_instruments
+                )
             else:
                 setup_type = getattr(SetupType, setup_name.upper(), None)
                 if not setup_type:
@@ -124,24 +115,14 @@ class BacktestService:
                         'error': f'Unknown setup type: {setup_name}'
                     }
                 
-                if selected_instruments:
-                    # Run backtest for specific setup but only on selected instruments
-                    results = self._backtest_single_setup_selected_instruments(
-                        setup_type,
-                        selected_instruments,
-                        start_date,
-                        end_date,
-                        optimization_params,
-                        walk_forward
-                    )
-                else:
-                    results = self.backtest_engine.run_backtest(
-                        start_date=start_date,
-                        end_date=end_date,
-                        setup_types=[setup_type],
-                        walk_forward=walk_forward,
-                        regime_aware=regime_aware
-                    )
+                results = self.backtest_engine.run_backtest(
+                    start_date=start_date,
+                    end_date=end_date,
+                    setup_types=[setup_type],
+                    walk_forward=walk_forward,
+                    regime_aware=regime_aware,
+                    selected_instruments=selected_instruments
+                )
             
             # Convert results to web-friendly format
             web_results = self._format_backtest_results(results)
@@ -348,44 +329,3 @@ class BacktestService:
         except Exception as e:
             return {'error': f'Failed to format multiple setup results: {str(e)}'}
     
-    def _backtest_selected_instruments(self, selected_instruments, start_date, end_date, optimization_params, walk_forward):
-        """Run backtests for all setups but only on selected instruments"""
-        try:
-            # This is a simplified implementation - in practice you'd need to modify
-            # the backtest engine to accept instrument filters
-            # For now, run normal backtest and then filter results
-            results = self.backtest_engine.run_backtest(
-                start_date=start_date,
-                end_date=end_date,
-                setup_types=None,  # None means all setups
-                walk_forward=walk_forward,
-                regime_aware=True
-            )
-            
-            # TODO: Filter results to only include selected instruments
-            # This would require modifications to the backtest engine
-            return results
-            
-        except Exception as e:
-            raise Exception(f'Failed to backtest selected instruments: {str(e)}')
-    
-    def _backtest_single_setup_selected_instruments(self, setup_type, selected_instruments, start_date, end_date, optimization_params, walk_forward):
-        """Run backtest for specific setup but only on selected instruments"""
-        try:
-            # This is a simplified implementation - in practice you'd need to modify
-            # the backtest engine to accept instrument filters
-            # For now, run normal backtest and then filter results
-            results = self.backtest_engine.run_backtest(
-                start_date=start_date,
-                end_date=end_date,
-                setup_types=[setup_type],
-                walk_forward=walk_forward,
-                regime_aware=True
-            )
-            
-            # TODO: Filter results to only include selected instruments
-            # This would require modifications to the backtest engine
-            return results
-            
-        except Exception as e:
-            raise Exception(f'Failed to backtest selected instruments for setup: {str(e)}')
