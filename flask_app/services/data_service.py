@@ -20,9 +20,15 @@ class DataService:
     """Service for managing data operations in Flask app"""
     
     def __init__(self):
-        # Use the correct database path - same as Flask config
-        import os
-        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'journal.db')
+        # Use the same database path as Flask config
+        from flask_app.config import Config
+        # Extract the database path from the SQLAlchemy URI
+        db_uri = Config.SQLALCHEMY_DATABASE_URI
+        if db_uri.startswith('sqlite:///'):
+            db_path = db_uri.replace('sqlite:///', '')
+        else:
+            # Fallback to root directory journal.db
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'journal.db')
         self.data_cache = DataCache(db_path)
     
     def get_cache_stats(self) -> Dict:
@@ -31,18 +37,30 @@ class DataService:
             # Get cache stats from DataCache
             stats = self.data_cache.get_cache_stats()
             
-            # Add database stats
-            instruments_count = Instrument.query.count()
-            etfs_count = Instrument.query.filter(Instrument.type.in_(['ETF', 'ETN'])).count()
-            stocks_count = Instrument.query.filter(Instrument.type == 'Stock').count()
-            price_records = PriceData.query.count()
-            indicator_records = Indicator.query.count()
-            
-            # Get date ranges
-            price_date_range = db.session.query(
-                db.func.min(PriceData.date),
-                db.func.max(PriceData.date)
-            ).first()
+            # Add database stats using raw SQLite queries
+            import sqlite3
+            with sqlite3.connect(self.data_cache.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Count instruments
+                cursor.execute("SELECT COUNT(*) FROM instruments")
+                instruments_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM instruments WHERE type IN ('ETF', 'ETN')")
+                etfs_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM instruments WHERE type = 'Stock'")
+                stocks_count = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM price_data")
+                price_records = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM indicators")
+                indicator_records = cursor.fetchone()[0]
+                
+                # Get date ranges
+                cursor.execute("SELECT MIN(date), MAX(date) FROM price_data")
+                price_date_range = cursor.fetchone()
             
             web_stats = {
                 'database': {
@@ -52,8 +70,8 @@ class DataService:
                     'price_records': price_records,
                     'indicator_records': indicator_records,
                     'price_date_range': {
-                        'start': price_date_range[0].isoformat() if price_date_range[0] else None,
-                        'end': price_date_range[1].isoformat() if price_date_range[1] else None
+                        'start': price_date_range[0] if price_date_range[0] else None,
+                        'end': price_date_range[1] if price_date_range[1] else None
                     }
                 },
                 'cache': stats,
@@ -65,7 +83,17 @@ class DataService:
         except Exception as e:
             return {
                 'error': f"Failed to get cache stats: {str(e)}",
-                'database': {'total_instruments': 0},
+                'database': {
+                    'total_instruments': 0,
+                    'etfs': 0,
+                    'stocks': 0,
+                    'price_records': 0,
+                    'indicator_records': 0,
+                    'price_date_range': {
+                        'start': None,
+                        'end': None
+                    }
+                },
                 'cache': {},
                 'last_updated': datetime.now().isoformat()
             }
@@ -75,8 +103,11 @@ class DataService:
         try:
             if symbols is None:
                 # Get all instrument symbols from database
-                instruments = Instrument.query.all()
-                symbols = [inst.symbol for inst in instruments]
+                import sqlite3
+                with sqlite3.connect(self.data_cache.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT symbol FROM instruments ORDER BY symbol")
+                    symbols = [row[0] for row in cursor.fetchall()]
             
             results = {
                 'success': [],
@@ -222,30 +253,53 @@ class DataService:
     def get_instruments(self, instrument_type: Optional[str] = None) -> List[Dict]:
         """Get instruments from database"""
         try:
-            query = Instrument.query
-            if instrument_type:
-                if instrument_type.lower() == 'etf':
-                    query = query.filter(Instrument.type.in_(['ETF', 'ETN']))
+            import sqlite3
+            with sqlite3.connect(self.data_cache.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Build query based on instrument type
+                if instrument_type:
+                    if instrument_type.lower() == 'etf':
+                        cursor.execute("""
+                            SELECT id, symbol, name, type, sector, theme, geography, 
+                                   leverage, volatility_profile, tags
+                            FROM instruments 
+                            WHERE type IN ('ETF', 'ETN') 
+                            ORDER BY symbol
+                        """)
+                    else:
+                        cursor.execute("""
+                            SELECT id, symbol, name, type, sector, theme, geography, 
+                                   leverage, volatility_profile, tags
+                            FROM instruments 
+                            WHERE type = ? 
+                            ORDER BY symbol
+                        """, (instrument_type,))
                 else:
-                    query = query.filter(Instrument.type == instrument_type)
-            
-            instruments = query.order_by(Instrument.symbol).all()
-            
-            return [
-                {
-                    'id': inst.id,
-                    'symbol': inst.symbol,
-                    'name': inst.name,
-                    'type': inst.type,
-                    'sector': inst.sector,
-                    'theme': inst.theme,
-                    'geography': inst.geography,
-                    'leverage': inst.leverage,
-                    'volatility_profile': inst.volatility_profile,
-                    'tags': inst.tag_list
-                }
-                for inst in instruments
-            ]
+                    cursor.execute("""
+                        SELECT id, symbol, name, type, sector, theme, geography, 
+                               leverage, volatility_profile, tags
+                        FROM instruments 
+                        ORDER BY symbol
+                    """)
+                
+                instruments = cursor.fetchall()
+                
+                return [
+                    {
+                        'id': inst[0],
+                        'symbol': inst[1],
+                        'name': inst[2],
+                        'type': inst[3],
+                        'sector': inst[4],
+                        'theme': inst[5],
+                        'geography': inst[6],
+                        'leverage': inst[7],
+                        'volatility_profile': inst[8],
+                        'tags': inst[9].split(',') if inst[9] else []
+                    }
+                    for inst in instruments
+                ]
             
         except Exception as e:
             return [{'error': f"Failed to get instruments: {str(e)}"}]

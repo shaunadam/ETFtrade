@@ -1,111 +1,29 @@
-# CLAUDE.md
+# Claude.md: Project Briefing Document
 
-This file provides guidance to Claude Code when working with code in this repository.
+## 1. Project Architecture Overview
 
-## Project Overview
+This project is a sophisticated Python-based ETF and stock swing trading system. It is designed for long-term capital growth with a focus on controlled drawdowns, aiming to outperform benchmarks like SPY. The system features a dual interface approach:
 
-This is a Python-based ETF and stock swing trading system designed to generate long-term capital growth with controlled drawdowns. The system trades both ETFs and individual stocks with equal priority, featuring both CLI tools and a Flask web application for comprehensive trading workflow management.
+*   **Command-Line Interface (CLI)**: For core operations like screening, data caching, regime detection, trade setup execution, and backtesting. Key CLI tools include `screener.py`, `data_cache.py`, `regime_detection.py`, `trade_setups.py`, and `backtest.py`.
+*   **Flask Web Application**: A modular web application providing a professional user interface with interactive dashboards, charting, and comprehensive trading workflow management. It integrates all CLI functionalities and offers features like real-time progress updates and configuration UIs.
 
-**Key Objectives:**
-- Target 20% max drawdown with decades-long time horizon
-- Trade frequency: 1-2 hours weeknights + Sunday sessions
-- Must outperform benchmarks (SPY, sector ETFs)
-- Future-proofed to handle both ETFs and individual stocks
+The system relies on a robust technical stack including Python, Flask, Pandas, NumPy, Matplotlib/Plotly, and SQLite for data storage. It emphasizes intelligent data caching to minimize API calls and incorporates a sophisticated market regime detection system to inform trading strategies. Risk management is a core component, with defined rules for position sizing, capital risk per trade, and sector concentration.
 
-## Architecture & Components
+The project is structured into distinct development phases, progressing from foundational strategy development to advanced features like trade journaling, reporting, and optimization.
 
-### Core Components
-- **screener.py**: Production CLI for ETF/stock screening with regime-aware filtering
-- **data_cache.py**: Intelligent data caching engine with 95%+ API call reduction
-- **regime_detection.py**: Market regime detection across 4 dimensions
-- **trade_setups.py**: Core trade setup implementations with regime validation
-- **backtest.py**: Walk-forward backtesting engine with regime analysis
-- **flask_app/**: Complete modular Flask web application with dark Bootstrap 5 theme
+## 2. Connection of Markdown Files
 
-### Database Schema
-```sql
-instruments: id, symbol, name, type (ETF/stock), sector, tags
-price_data: symbol, date, open, high, low, close, volume, updated_at
-indicators: symbol, date, indicator_name, value, updated_at
-trades: id, instrument_id, setup, entry_date, exit_date, size, entry_price, exit_price, r_planned, r_actual, notes, regime_at_entry
-market_regimes: date, volatility_regime, trend_regime, sector_rotation, risk_on_off, vix_level, spy_vs_sma200, growth_value_ratio, risk_on_off_ratio
-```
+The markdown files in the root of this repository serve as critical documentation and planning artifacts for the project:
 
-## Technical Stack
+*   **`README.md`**: Acts as the primary entry point. It provides a high-level overview of the project's objectives, features, quick start guide, project structure, core components, usage examples for both CLI and Flask app, performance metrics, and development status. It outlines the initial focus on ETFs and the future-proofing for individual stocks.
+*   **`CLAUDE.md`**: This document itself. It's intended as a briefing for AI assistants, detailing the project's architecture, key components, technical stack, trading strategy framework, data caching system, development phases, success metrics, and development preferences.
+*  **`PLAN.md`**: The short term plan of next steps to work on. 
 
-**Core Libraries:**
-- `yfinance`: Market data (free tier)
-- `pandas`, `numpy`: Data manipulation
-- `matplotlib`/`plotly`: Visualization
-- `sqlite3`: Database (built-in)
+Collectively, these files provide a comprehensive view of the project's goals, architecture, current status, and future development roadmap.
 
-**Web Framework:**
-- `flask`: Web application framework
-- `flask-sqlalchemy`: Database ORM integration
-- `python-dotenv`: Environment configuration
+## 3. Specific Task Goal
 
-**Development Tools:**
-- `pytest`: Testing framework
-- `ruff`: Linting and formatting
-- `mypy`: Type checking
-
-## Trading Strategy Framework
-
-### Market Regime Detection
-- **Volatility Regime**: VIX levels (low <20, medium 20-30, high >30)
-- **Trend Regime**: SPY distance from 200-day SMA
-- **Sector Rotation**: Growth vs Value (QQQ/IWM, XLK/XLF ratios)
-- **Risk-On/Risk-Off**: Defensive vs aggressive ETF performance
-
-### Trade Setups (13 Total)
-Core setups covering momentum, mean reversion, gaps, volatility, dividends, multi-timeframe analysis, institutional behavior, event-driven opportunities, and Elder's advanced indicators.
-
-### Risk Management Rules
-- Max 2% capital risk per trade
-- Max 3-4 concurrent positions
-- Max 30% in correlated sectors
-- R-based exits (2R target, -1R stop)
-- ATR-based trailing stops
-
-## Data Caching System
-
-### Key Features
-- **Smart Refresh Strategy**: Always refreshes last 5 trading days
-- **Healing Logic**: Ensures 200+ day buffer for SMA200 calculations
-- **95% API Reduction**: Dramatically reduces yfinance API calls
-- **Technical Indicators**: Pre-calculated and cached (SMA20/50/200, RSI, ATR, Bollinger Bands, EMA13, Force Index, MACD)
-
-## Development Phases
-
-1. **Phase 1**: Strategy Foundation ✅
-2. **Phase 2**: Screener + Backtest Engine ✅
-3. **Phase 3**: Flask Web Application ✅
-4. **Phase 4**: Trade Journal Integration (In Progress)
-5. **Phase 5**: Reporting Tools
-6. **Phase 6**: Optimization & Expansion
-
-## Success Metrics
-- Beat SPY by 2%+ annually after costs
-- Stay within 20% maximum drawdown
-- Positive performance across market regimes
-- <30 minutes daily maintenance
-
-## Development Preferences
-- **Commit Messages**: Keep simple, 1 sentence, no "Generated with Claude Code" footers
-- **Code Style**: Follow existing patterns, minimal comments unless needed
-- **File Creation**: NEVER create files unless absolutely necessary - always prefer editing existing files
-- **Documentation**: NEVER proactively create documentation files unless explicitly requested
-- This is always a feature branch - no backwards compatibility needed
-- When in doubt, we choose clarity over cleverness
-- Avoid complex abstractions or "clever" code. The simple, obvious solution is probably better, and my guidance helps you stay focused on what matters.
-
-## Problem-Solving Together
-When you're stuck or confused:
-
-- Stop - Don't spiral into complex solutions
-- Delegate - Consider spawning agents for parallel investigation
-- Ultrathink - For complex problems, say "I need to ultrathink through this challenge" to engage deeper reasoning
-- Step back - Re-read the requirements
-- Simplify - The simple solution is usually correct
-- Ask - "I see two approaches: [A] vs [B]. Which do you prefer?"
-- **My insights on better approaches are valued - please ask for them!**
+The current task is to act as a technical project manager to consolidate project planning information. This involves:
+1.  Reading all markdown (`.md`) files in the root of the repository.
+2.  Creating a detailed briefing document (`claude.md`) for another AI assistant, explaining the project architecture, file connections, and the overall goal of this task.
+3.  Creating a consolidated plan (`PLAN.md`) that summarizes the current in-progress elements and confirmed progress from the relevant markdown files.

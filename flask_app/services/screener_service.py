@@ -34,16 +34,22 @@ class ScreenerService:
     def get_available_setups(self) -> List[Dict]:
         """Get all available trade setups"""
         try:
-            # Get setups from database
-            setups = Setup.query.order_by(Setup.name).all()
+            # Get setups from database using raw SQLite
+            import sqlite3
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'journal.db')
+            
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, name, description, parameters FROM setups ORDER BY name")
+                setups = cursor.fetchall()
             
             return [
                 {
-                    'id': setup.id,
-                    'name': setup.name,
-                    'display_name': setup.name.replace('_', ' ').title(),
-                    'description': setup.description,
-                    'parameters': setup.parameters
+                    'id': setup[0],
+                    'name': setup[1],
+                    'display_name': setup[1].replace('_', ' ').title(),
+                    'description': setup[2],
+                    'parameters': setup[3]
                 }
                 for setup in setups
             ]
@@ -85,9 +91,28 @@ class ScreenerService:
             
             # Convert TradeSignal objects to web-friendly format
             screening_results = []
+            
+            # Get all instruments from database using raw SQLite
+            import sqlite3
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'journal.db')
+            instruments_dict = {}
+            
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, symbol, name, type, sector, theme FROM instruments")
+                for row in cursor.fetchall():
+                    instruments_dict[row[1]] = {
+                        'id': row[0],
+                        'symbol': row[1],
+                        'name': row[2],
+                        'type': row[3],
+                        'sector': row[4],
+                        'theme': row[5]
+                    }
+            
             for signal in signals:
-                # Get instrument info from database
-                instrument = Instrument.query.filter(Instrument.symbol == signal.symbol).first()
+                # Get instrument info from our cached dict
+                instrument = instruments_dict.get(signal.symbol)
                 
                 result = {
                     'setup_name': signal.setup_type.value,
@@ -99,12 +124,12 @@ class ScreenerService:
                     'target_price': signal.target_price,
                     'notes': signal.notes or f'Signal from {signal.setup_type.value}',
                     'instrument': {
-                        'id': instrument.id if instrument else None,
+                        'id': instrument['id'] if instrument else None,
                         'symbol': signal.symbol,
-                        'name': instrument.name if instrument else signal.symbol,
-                        'type': instrument.type if instrument else 'Unknown',
-                        'sector': instrument.sector if instrument else None,
-                        'theme': instrument.theme if instrument else None
+                        'name': instrument['name'] if instrument else signal.symbol,
+                        'type': instrument['type'] if instrument else 'Unknown',
+                        'sector': instrument['sector'] if instrument else None,
+                        'theme': instrument['theme'] if instrument else None
                     },
                     'screened_at': datetime.now().isoformat()
                 }
@@ -140,17 +165,32 @@ class ScreenerService:
                     'error': 'ETF Screener not initialized'
                 }
                 
-            # Get instrument info
-            instrument = Instrument.query.filter(Instrument.symbol == symbol).first()
+            # Get instrument info using raw SQLite
+            import sqlite3
+            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'journal.db')
             
-            if not instrument:
-                return {
-                    'symbol': symbol,
-                    'error': 'Symbol not found in database'
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, symbol, name, type, sector, theme FROM instruments WHERE symbol = ?", (symbol,))
+                row = cursor.fetchone()
+                
+                if not row:
+                    return {
+                        'symbol': symbol,
+                        'error': 'Symbol not found in database'
+                    }
+                
+                instrument = {
+                    'id': row[0],
+                    'symbol': row[1],
+                    'name': row[2],
+                    'type': row[3],
+                    'sector': row[4],
+                    'theme': row[5]
                 }
             
             # Use CLI screener to analyze just this symbol
-            instrument_types = ['ETF', 'ETN'] if instrument.type in ['ETF', 'ETN'] else ['Stock']
+            instrument_types = ['ETF', 'ETN'] if instrument['type'] in ['ETF', 'ETN'] else ['Stock']
             
             signals = self.etf_screener.screen_instruments(
                 setup_filter=setup_name,

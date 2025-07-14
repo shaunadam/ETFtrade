@@ -60,7 +60,11 @@ class DataCache:
         today_weekday = datetime.now().weekday()
         is_weekend = today_weekday >= 5  # Saturday=5, Sunday=6
         
-        # Try to get from cache first
+        # Check if we need to refresh data first (only on weekdays)
+        if not is_weekend and self._should_refresh_data(symbol, period):
+            return self._fetch_and_cache_data(symbol, period, force_refresh=False)
+        
+        # Try to get from cache
         cached_data = self._get_cached_price_data(symbol, period)
         if cached_data is not None and len(cached_data) > 0:
             # Add technical indicators from cache
@@ -75,16 +79,11 @@ class DataCache:
                 logger.info(f"Weekend cache fallback for {symbol}: returning {len(any_cached_data)} days of available data")
                 cached_data = self._add_cached_indicators(any_cached_data, symbol)
                 return cached_data
-        
-        # Check if we need to refresh data (only on weekdays or if no cache)
-        if not is_weekend and self._should_refresh_data(symbol, period):
-            return self._fetch_and_cache_data(symbol, period, force_refresh=False)
-        
-        # If we have cached data but it's weekday and needs refresh, still return cached data
-        if any_cached_data is not None and len(any_cached_data) > 0:
-            logger.debug(f"Using cached data for {symbol} (period: {period})")
-            cached_data = self._add_cached_indicators(any_cached_data, symbol)
-            return cached_data
+            else:
+                # On weekdays, use cached data if refresh wasn't needed
+                logger.debug(f"Using cached data for {symbol} (period: {period})")
+                cached_data = self._add_cached_indicators(any_cached_data, symbol)
+                return cached_data
         
         # Only try yfinance as last resort (and not on weekends)
         if not is_weekend:
