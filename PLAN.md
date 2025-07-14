@@ -8,11 +8,8 @@ The project is in a strong position, with foundational elements and core CLI too
 
 
 *   **Current Focus**:
-    *   Implementing charting on the stock screener.
-    *   Reviewing and tidying up existing functionality (e.g., completing placeholder implementations).
-    *   Standardizing progress bars for clear user feedback across all operations.
-    *   Enabling users to select stocks from screener results for backtesting.
-    *   Identifying useful tools for available data.
+    *   Bug Fix: Screener doesn't screen individual stocks if you select All. It only returns ETFs
+    
 *   **Next Major Task**:
     *   **Risk Management Calculator (Phase 4.3)**:
         *   Position Sizing Calculator (risk-based, account size, entry/stop/target inputs).
