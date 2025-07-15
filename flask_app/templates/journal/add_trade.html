@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Add Trade - Trade Journal{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-plus-circle text-success"></i>
+            Add New Trade
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-journal-plus"></i>
+                    Trade Entry Form
+                </h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('journal.submit_add_trade') }}" method="POST">
+                    <div class="row">
+                        <!-- Symbol Selection -->
+                        <div class="col-md-6 mb-3">
+                            <label for="symbol" class="form-label">Symbol *</label>
+                            <select class="form-select" id="symbol" name="symbol" required>
+                                <option value="">Select an instrument...</option>
+                                {% for instrument in instruments %}
+                                <option value="{{ instrument.symbol }}" 
+                                        data-type="{{ instrument.type }}"
+                                        data-sector="{{ instrument.sector or '' }}">
+                                    {{ instrument.symbol }} - {{ instrument.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Choose the ETF or stock to trade</div>
+                        </div>
+
+                        <!-- Setup Selection -->
+                        <div class="col-md-6 mb-3">
+                            <label for="setup_name" class="form-label">Trade Setup</label>
+                            <select class="form-select" id="setup_name" name="setup_name">
+                                <option value="">Manual Entry</option>
+                                {% for setup in setups %}
+                                <option value="{{ setup.name }}">{{ setup.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Select the trading setup used</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Entry Date -->
+                        <div class="col-md-4 mb-3">
+                            <label for="entry_date" class="form-label">Entry Date *</label>
+                            <input type="date" class="form-control" id="entry_date" name="entry_date" 
+                                   value="{{ today_date if today_date else '' }}" required>
+                        </div>
+
+                        <!-- Entry Price -->
+                        <div class="col-md-4 mb-3">
+                            <label for="entry_price" class="form-label">Entry Price *</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="entry_price" name="entry_price" 
+                                       step="0.01" min="0" required>
+                            </div>
+                        </div>
+
+                        <!-- Position Size -->
+                        <div class="col-md-4 mb-3">
+                            <label for="size" class="form-label">Position Size *</label>
+                            <input type="number" class="form-control" id="size" name="size" 
+                                   step="1" min="1" required>
+                            <div class="form-text">Number of shares/units</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Stop Loss -->
+                        <div class="col-md-4 mb-3">
+                            <label for="stop_loss" class="form-label">Stop Loss</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="stop_loss" name="stop_loss" 
+                                       step="0.01" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Target Price -->
+                        <div class="col-md-4 mb-3">
+                            <label for="target_price" class="form-label">Target Price</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="target_price" name="target_price" 
+                                       step="0.01" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Planned R -->
+                        <div class="col-md-4 mb-3">
+                            <label for="r_planned" class="form-label">Planned R Multiple</label>
+                            <input type="number" class="form-control" id="r_planned" name="r_planned" 
+                                   step="0.1" min="0">
+                            <div class="form-text">Risk/reward ratio</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Commission -->
+                        <div class="col-md-6 mb-3">
+                            <label for="commission" class="form-label">Commission</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="commission" name="commission" 
+                                       step="0.01" min="0" value="0">
+                            </div>
+                        </div>
+
+                        <!-- Market Regime -->
+                        <div class="col-md-6 mb-3">
+                            <label for="regime_at_entry" class="form-label">Market Regime</label>
+                            <input type="text" class="form-control" id="regime_at_entry" name="regime_at_entry" 
+                                   placeholder="e.g., Low Vol, Bull Trend">
+                            <div class="form-text">Market conditions at entry</div>
+                        </div>
+                    </div>
+
+                    <!-- Entry Reason -->
+                    <div class="mb-3">
+                        <label for="entry_reason" class="form-label">Entry Reason</label>
+                        <textarea class="form-control" id="entry_reason" name="entry_reason" rows="3"
+                                  placeholder="Why did you enter this trade? What was the setup?"></textarea>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Additional Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="2"
+                                  placeholder="Any additional observations or notes"></textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> Add Trade
+                        </button>
+                        <a href="{{ url_for('journal.index') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightbulb"></i>
+                    Quick Tips
+                </h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle text-success"></i>
+                        <strong>Required fields:</strong> Symbol, entry date, price, and size
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-shield-check text-info"></i>
+                        <strong>Risk Management:</strong> Set stop loss and target for better tracking
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-journal-bookmark text-warning"></i>
+                        <strong>Documentation:</strong> Record your entry reason for later analysis
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-calculator text-primary"></i>
+                        <strong>R Multiple:</strong> Target/risk ratio (e.g., 2.0 = 2:1 reward:risk)
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Risk Calculator -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-calculator"></i>
+                    Risk Calculator
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Position Value:</small>
+                        <div id="position-value" class="text-success">$0.00</div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Risk Amount:</small>
+                        <div id="risk-amount" class="text-danger">$0.00</div>
+                    </div>
+                    <div class="col-12">
+                        <small class="text-muted">Risk Percentage:</small>
+                        <div id="risk-percentage" class="text-info">0.0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Risk calculator
+function updateRiskCalculator() {
+    const entryPrice = parseFloat(document.getElementById('entry_price').value) || 0;
+    const size = parseFloat(document.getElementById('size').value) || 0;
+    const stopLoss = parseFloat(document.getElementById('stop_loss').value) || 0;
+    
+    const positionValue = entryPrice * size;
+    const riskAmount = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) * size : 0;
+    const riskPercentage = positionValue > 0 ? (riskAmount / positionValue) * 100 : 0;
+    
+    document.getElementById('position-value').textContent = '$' + positionValue.toFixed(2);
+    document.getElementById('risk-amount').textContent = '$' + riskAmount.toFixed(2);
+    document.getElementById('risk-percentage').textContent = riskPercentage.toFixed(1) + '%';
+}
+
+// Add event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    const entryPrice = document.getElementById('entry_price');
+    const size = document.getElementById('size');
+    const stopLoss = document.getElementById('stop_loss');
+    
+    [entryPrice, size, stopLoss].forEach(field => {
+        field.addEventListener('input', updateRiskCalculator);
+    });
+    
+    // Set today's date as default
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('entry_date').value = today;
+});
+</script>
+{% endblock %}

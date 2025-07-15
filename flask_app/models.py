@@ -87,9 +87,16 @@ class Trade(db.Model):
     size = db.Column(db.Float, nullable=False)
     entry_price = db.Column(db.Float, nullable=False)
     exit_price = db.Column(db.Float)
+    stop_loss = db.Column(db.Float)
+    target_price = db.Column(db.Float)
     r_planned = db.Column(db.Float)
     r_actual = db.Column(db.Float)
+    pnl_dollar = db.Column(db.Float)
+    pnl_percent = db.Column(db.Float)
+    commission = db.Column(db.Float, default=0.0)
     notes = db.Column(db.Text)
+    entry_reason = db.Column(db.Text)
+    exit_reason = db.Column(db.Text)
     regime_at_entry = db.Column(db.String(200))
     status = db.Column(db.String(20), default='open', index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -116,6 +123,27 @@ class Trade(db.Model):
         if not self.is_open or not self.exit_price:
             return None
         return (self.exit_price - self.entry_price) * self.size
+    
+    def calculate_pnl(self, current_price=None):
+        """Calculate P&L in dollars and percentage"""
+        if self.status == 'closed' and self.exit_price:
+            price_diff = self.exit_price - self.entry_price
+        elif current_price:
+            price_diff = current_price - self.entry_price
+        else:
+            return None, None
+            
+        pnl_dollars = (price_diff * self.size) - (self.commission or 0)
+        pnl_percent = (price_diff / self.entry_price) * 100 if self.entry_price else 0
+        
+        return pnl_dollars, pnl_percent
+    
+    def update_pnl(self, current_price=None):
+        """Update stored P&L values"""
+        pnl_dollar, pnl_percent = self.calculate_pnl(current_price)
+        if pnl_dollar is not None:
+            self.pnl_dollar = pnl_dollar
+            self.pnl_percent = pnl_percent
     
     @property
     def days_held(self):

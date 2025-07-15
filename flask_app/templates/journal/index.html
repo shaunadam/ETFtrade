@@ -6,54 +6,186 @@
 <div class="row">
     <div class="col-12">
         <h1 class="text-light mb-4">
-            <i class="bi bi-journal-text text-trading-green"></i>
+            <i class="bi bi-journal-text text-success"></i>
             Trade Journal
         </h1>
     </div>
 </div>
 
-<div class="row">
+<!-- Quick Actions -->
+<div class="row mb-4">
     <div class="col-12">
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-success">
+                <i class="bi bi-plus-circle"></i> Add Trade
+            </a>
+            <a href="{{ url_for('journal.positions') }}" class="btn btn-primary">
+                <i class="bi bi-list-ul"></i> Open Positions
+            </a>
+            <a href="{{ url_for('journal.history') }}" class="btn btn-secondary">
+                <i class="bi bi-clock-history"></i> Trade History
+            </a>
+            <a href="{{ url_for('journal.analytics') }}" class="btn btn-info">
+                <i class="bi bi-graph-up"></i> Analytics
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-dark border-success">
+            <div class="card-body text-center">
+                <i class="bi bi-wallet2 text-success fs-2"></i>
+                <h5 class="mt-2">Open Positions</h5>
+                <h3 class="text-success">{{ open_positions.summary.total_positions if open_positions.summary else 0 }}</h3>
+                <small class="text-muted">
+                    ${{ "%.2f"|format(open_positions.summary.total_value if open_positions.summary else 0) }}
+                </small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-info">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up text-info fs-2"></i>
+                <h5 class="mt-2">Total P&L</h5>
+                <h3 class="text-info">
+                    ${{ "%.2f"|format(open_positions.summary.total_pnl if open_positions.summary else 0) }}
+                </h3>
+                <small class="text-muted">Open positions</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-warning">
+            <div class="card-body text-center">
+                <i class="bi bi-percent text-warning fs-2"></i>
+                <h5 class="mt-2">Win Rate</h5>
+                <h3 class="text-warning">
+                    {{ "%.1f"|format(performance.win_rate if performance and 'win_rate' in performance else 0) }}%
+                </h3>
+                <small class="text-muted">Last 90 days</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-primary">
+            <div class="card-body text-center">
+                <i class="bi bi-lightning text-primary fs-2"></i>
+                <h5 class="mt-2">Avg R Multiple</h5>
+                <h3 class="text-primary">
+                    {{ "%.2f"|format(performance.avg_r_multiple if performance and 'avg_r_multiple' in performance else 0) }}R
+                </h3>
+                <small class="text-muted">Last 90 days</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-md-8">
         <div class="card">
-            <div class="card-body text-center py-5">
-                <i class="bi bi-journal-bookmark-fill display-1 text-trading-green mb-3"></i>
-                <h3 class="text-light">Professional Trade Journal</h3>
-                <p class="text-muted mb-4">
-                    Comprehensive trade tracking with performance analysis, correlation monitoring,
-                    and risk management tools for both ETFs and individual stocks.
-                </p>
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-plus-circle text-trading-blue mb-2"></i>
-                                <h5>Trade Entry</h5>
-                                <p class="small text-muted">Record trades with setup details and risk parameters</p>
-                            </div>
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history"></i>
+                    Recent Trades
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_trades and recent_trades[0] and 'error' not in recent_trades[0] %}
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Date</th>
+                                    <th>Setup</th>
+                                    <th>Status</th>
+                                    <th>P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for trade in recent_trades[:5] %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ trade.symbol }}</strong>
+                                        <small class="text-muted d-block">{{ trade.instrument_type }}</small>
+                                    </td>
+                                    <td>{{ trade.entry_date }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            {{ trade.setup_name or 'Manual' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if trade.status == 'open' %}
+                                            <span class="badge bg-success">Open</span>
+                                        {% elif trade.status == 'closed' %}
+                                            <span class="badge bg-secondary">Closed</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ trade.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if trade.pnl_dollar %}
+                                            <span class="{% if trade.pnl_dollar > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                ${{ "%.2f"|format(trade.pnl_dollar) }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-center">
+                        <a href="{{ url_for('journal.history') }}" class="btn btn-outline-primary btn-sm">
+                            View All Trades
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-journal-x text-muted fs-1"></i>
+                        <p class="text-muted mt-2">No trades recorded yet</p>
+                        <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add Your First Trade
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pie-chart"></i>
+                    Sector Allocation
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if open_positions.summary and open_positions.summary.sector_breakdown %}
+                    {% for sector, data in open_positions.summary.sector_breakdown.items() %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>{{ sector }}</span>
+                        <div>
+                            <span class="badge bg-primary">{{ data.count }}</span>
+                            <small class="text-muted">${{ "%.0f"|format(data.value) }}</small>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-graph-up-arrow text-trading-green mb-2"></i>
-                                <h5>Performance Tracking</h5>
-                                <p class="small text-muted">Monitor R multiples and portfolio performance</p>
-                            </div>
-                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-pie-chart text-muted fs-3"></i>
+                        <p class="text-muted mt-2">No open positions</p>
                     </div>
-                    <div class="col-md-4">
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-body">
-                                <i class="bi bi-diagram-3 text-trading-yellow mb-2"></i>
-                                <h5>Correlation Analysis</h5>
-                                <p class="small text-muted">Track position correlations and risk exposure</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="mt-4">
-                    <span class="badge bg-warning fs-6">Coming Soon</span>
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>

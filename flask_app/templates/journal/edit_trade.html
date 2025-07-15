@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Trade - Trade Journal{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-pencil text-warning"></i>
+            Edit Trade #{{ trade.id }}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-journal-check"></i>
+                    Trade Details - {{ trade.instrument.symbol }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('journal.submit_edit_trade', trade_id=trade.id) }}" method="POST">
+                    <div class="row">
+                        <!-- Trade Info (Read-only) -->
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Symbol</label>
+                            <input type="text" class="form-control" value="{{ trade.instrument.symbol }} - {{ trade.instrument.name }}" readonly>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Trade ID</label>
+                            <input type="text" class="form-control" value="#{{ trade.id }}" readonly>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Entry Date (Read-only for now) -->
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Entry Date</label>
+                            <input type="text" class="form-control" value="{{ trade.entry_date }}" readonly>
+                        </div>
+
+                        <!-- Entry Price -->
+                        <div class="col-md-4 mb-3">
+                            <label for="entry_price" class="form-label">Entry Price *</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="entry_price" name="entry_price" 
+                                       step="0.01" min="0" value="{{ trade.entry_price }}" required>
+                            </div>
+                        </div>
+
+                        <!-- Position Size -->
+                        <div class="col-md-4 mb-3">
+                            <label for="size" class="form-label">Position Size *</label>
+                            <input type="number" class="form-control" id="size" name="size" 
+                                   step="1" min="1" value="{{ trade.size|int }}" required>
+                            <div class="form-text">Number of shares/units</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Exit Price -->
+                        <div class="col-md-4 mb-3">
+                            <label for="exit_price" class="form-label">Exit Price</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="exit_price" name="exit_price" 
+                                       step="0.01" min="0" value="{{ trade.exit_price if trade.exit_price else '' }}">
+                            </div>
+                        </div>
+
+                        <!-- Exit Date -->
+                        <div class="col-md-4 mb-3">
+                            <label for="exit_date" class="form-label">Exit Date</label>
+                            <input type="date" class="form-control" id="exit_date" name="exit_date" 
+                                   value="{{ trade.exit_date if trade.exit_date else '' }}">
+                        </div>
+
+                        <!-- Status -->
+                        <div class="col-md-4 mb-3">
+                            <label for="status" class="form-label">Status</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="open" {{ 'selected' if trade.status == 'open' else '' }}>Open</option>
+                                <option value="closed" {{ 'selected' if trade.status == 'closed' else '' }}>Closed</option>
+                                <option value="cancelled" {{ 'selected' if trade.status == 'cancelled' else '' }}>Cancelled</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Stop Loss -->
+                        <div class="col-md-4 mb-3">
+                            <label for="stop_loss" class="form-label">Stop Loss</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="stop_loss" name="stop_loss" 
+                                       step="0.01" min="0" value="{{ trade.stop_loss if trade.stop_loss else '' }}">
+                            </div>
+                        </div>
+
+                        <!-- Target Price -->
+                        <div class="col-md-4 mb-3">
+                            <label for="target_price" class="form-label">Target Price</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="target_price" name="target_price" 
+                                       step="0.01" min="0" value="{{ trade.target_price if trade.target_price else '' }}">
+                            </div>
+                        </div>
+
+                        <!-- Commission -->
+                        <div class="col-md-4 mb-3">
+                            <label for="commission" class="form-label">Commission</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="commission" name="commission" 
+                                       step="0.01" min="0" value="{{ trade.commission if trade.commission else '0' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Planned R -->
+                        <div class="col-md-6 mb-3">
+                            <label for="r_planned" class="form-label">Planned R Multiple</label>
+                            <input type="number" class="form-control" id="r_planned" name="r_planned" 
+                                   step="0.1" min="0" value="{{ trade.r_planned if trade.r_planned else '' }}">
+                            <div class="form-text">Risk/reward ratio</div>
+                        </div>
+
+                        <!-- Actual R -->
+                        <div class="col-md-6 mb-3">
+                            <label for="r_actual" class="form-label">Actual R Multiple</label>
+                            <input type="number" class="form-control" id="r_actual" name="r_actual" 
+                                   step="0.1" value="{{ trade.r_actual if trade.r_actual else '' }}">
+                            <div class="form-text">Calculated from exit</div>
+                        </div>
+                    </div>
+
+                    <!-- Entry Reason -->
+                    <div class="mb-3">
+                        <label for="entry_reason" class="form-label">Entry Reason</label>
+                        <textarea class="form-control" id="entry_reason" name="entry_reason" rows="3"
+                                  placeholder="Why did you enter this trade?">{{ trade.entry_reason if trade.entry_reason else '' }}</textarea>
+                    </div>
+
+                    <!-- Exit Reason -->
+                    <div class="mb-3">
+                        <label for="exit_reason" class="form-label">Exit Reason</label>
+                        <textarea class="form-control" id="exit_reason" name="exit_reason" rows="3"
+                                  placeholder="Why did you exit this trade?">{{ trade.exit_reason if trade.exit_reason else '' }}</textarea>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Additional Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"
+                                  placeholder="Any additional observations or notes">{{ trade.notes if trade.notes else '' }}</textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-check-circle"></i> Update Trade
+                        </button>
+                        <a href="{{ url_for('journal.history') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </a>
+                        {% if trade.status == 'open' %}
+                        <button type="button" class="btn btn-danger" onclick="closeTradeModal({{ trade.id }}, '{{ trade.instrument.symbol }}')">
+                            <i class="bi bi-x-circle"></i> Close Trade
+                        </button>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Trade Summary -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-info-circle"></i>
+                    Trade Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Position Value:</small>
+                        <div class="text-info" id="position-value">
+                            ${{ "%.2f"|format(trade.entry_price * trade.size) }}
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Days Held:</small>
+                        <div class="text-primary">{{ trade.days_held }} days</div>
+                    </div>
+                    {% if trade.pnl_dollar %}
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Current P&L:</small>
+                        <div class="{% if trade.pnl_dollar > 0 %}text-success{% else %}text-danger{% endif %}">
+                            ${{ "%.2f"|format(trade.pnl_dollar) }}
+                            {% if trade.pnl_percent %}
+                                ({{ "%.1f"|format(trade.pnl_percent) }}%)
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if trade.stop_loss %}
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Risk Amount:</small>
+                        <div class="text-danger" id="risk-amount">
+                            ${{ "%.2f"|format(abs(trade.entry_price - trade.stop_loss) * trade.size) }}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Instrument Info -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-building"></i>
+                    Instrument Info
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-dark">
+                    <tr>
+                        <td>Symbol:</td>
+                        <td><strong>{{ trade.instrument.symbol }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Name:</td>
+                        <td>{{ trade.instrument.name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Type:</td>
+                        <td><span class="badge bg-primary">{{ trade.instrument.type }}</span></td>
+                    </tr>
+                    {% if trade.instrument.sector %}
+                    <tr>
+                        <td>Sector:</td>
+                        <td><span class="badge bg-secondary">{{ trade.instrument.sector }}</span></td>
+                    </tr>
+                    {% endif %}
+                    {% if trade.setup %}
+                    <tr>
+                        <td>Setup:</td>
+                        <td><span class="badge bg-info">{{ trade.setup.name }}</span></td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightning"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('journal.positions') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-list-ul"></i> View All Positions
+                    </a>
+                    <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-plus-circle"></i> Add New Trade
+                    </a>
+                    <button class="btn btn-outline-info btn-sm" onclick="viewTradeDetails({{ trade.id }})">
+                        <i class="bi bi-eye"></i> View Full Details
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Close Trade Modal -->
+<div class="modal fade" id="closeTradeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Close Trade</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="closeTradeForm">
+                    <input type="hidden" id="closeTradeId" name="trade_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" class="form-control" id="closeSymbol" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitPrice" class="form-label">Exit Price *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="exitPrice" name="exit_price" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitDate" class="form-label">Exit Date</label>
+                        <input type="date" class="form-control" id="exitDate" name="exit_date">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitReason" class="form-label">Exit Reason</label>
+                        <textarea class="form-control" id="exitReason" name="exit_reason" rows="3"
+                                  placeholder="Why are you closing this trade?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitCloseTrade()">
+                    <i class="bi bi-x-circle"></i> Close Trade
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Update position value calculator
+function updatePositionValue() {
+    const entryPrice = parseFloat(document.getElementById('entry_price').value) || 0;
+    const size = parseFloat(document.getElementById('size').value) || 0;
+    const stopLoss = parseFloat(document.getElementById('stop_loss').value) || 0;
+    
+    const positionValue = entryPrice * size;
+    const riskAmount = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) * size : 0;
+    
+    document.getElementById('position-value').textContent = '$' + positionValue.toFixed(2);
+    
+    const riskAmountEl = document.getElementById('risk-amount');
+    if (riskAmountEl) {
+        riskAmountEl.textContent = '$' + riskAmount.toFixed(2);
+    }
+}
+
+function closeTradeModal(tradeId, symbol) {
+    document.getElementById('closeTradeId').value = tradeId;
+    document.getElementById('closeSymbol').value = symbol;
+    document.getElementById('exitDate').value = new Date().toISOString().split('T')[0];
+    
+    const modal = new bootstrap.Modal(document.getElementById('closeTradeModal'));
+    modal.show();
+}
+
+function submitCloseTrade() {
+    const form = document.getElementById('closeTradeForm');
+    const formData = new FormData(form);
+    const tradeId = document.getElementById('closeTradeId').value;
+    
+    const data = {
+        exit_price: parseFloat(formData.get('exit_price')),
+        exit_date: formData.get('exit_date'),
+        exit_reason: formData.get('exit_reason')
+    };
+    
+    fetch(`/journal/api/trades/${tradeId}/close`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            location.reload();
+        } else {
+            alert('Error closing trade: ' + result.error);
+        }
+    })
+    .catch(error => {
+        alert('Error closing trade: ' + error.message);
+    });
+}
+
+// Add event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    const entryPrice = document.getElementById('entry_price');
+    const size = document.getElementById('size');
+    const stopLoss = document.getElementById('stop_loss');
+    
+    [entryPrice, size, stopLoss].forEach(field => {
+        field.addEventListener('input', updatePositionValue);
+    });
+});
+</script>
+{% endblock %}

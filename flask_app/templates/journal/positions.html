@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Open Positions - Trade Journal{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-list-ul text-success"></i>
+            Open Positions
+        </h1>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-success">
+                <i class="bi bi-plus-circle"></i> Add Trade
+            </a>
+            <a href="{{ url_for('journal.history') }}" class="btn btn-secondary">
+                <i class="bi bi-clock-history"></i> Trade History
+            </a>
+            <button class="btn btn-info" onclick="refreshPrices()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Prices
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+{% if positions.summary %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-dark border-primary">
+            <div class="card-body text-center">
+                <i class="bi bi-briefcase text-primary fs-2"></i>
+                <h5 class="mt-2">Total Positions</h5>
+                <h3 class="text-primary">{{ positions.summary.total_positions }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-info">
+            <div class="card-body text-center">
+                <i class="bi bi-currency-dollar text-info fs-2"></i>
+                <h5 class="mt-2">Total Value</h5>
+                <h3 class="text-info">${{ "%.2f"|format(positions.summary.total_value) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-{% if positions.summary.total_pnl >= 0 %}success{% else %}danger{% endif %}">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up text-{% if positions.summary.total_pnl >= 0 %}success{% else %}danger{% endif %} fs-2"></i>
+                <h5 class="mt-2">Unrealized P&L</h5>
+                <h3 class="text-{% if positions.summary.total_pnl >= 0 %}success{% else %}danger{% endif %}">
+                    ${{ "%.2f"|format(positions.summary.total_pnl) }}
+                </h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark border-warning">
+            <div class="card-body text-center">
+                <i class="bi bi-pie-chart text-warning fs-2"></i>
+                <h5 class="mt-2">Sectors</h5>
+                <h3 class="text-warning">{{ positions.summary.sector_breakdown|length }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Positions Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-table"></i>
+                    Position Details
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if positions.positions and positions.positions[0] and 'error' not in positions.positions[0] %}
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Entry Date</th>
+                                    <th>Setup</th>
+                                    <th>Entry Price</th>
+                                    <th>Size</th>
+                                    <th>Current Value</th>
+                                    <th>P&L</th>
+                                    <th>Days Held</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for position in positions.positions %}
+                                <tr>
+                                    <td>
+                                        <div>
+                                            <strong>{{ position.symbol }}</strong>
+                                            <small class="text-muted d-block">{{ position.instrument_name }}</small>
+                                            {% if position.sector %}
+                                            <span class="badge bg-secondary">{{ position.sector }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>{{ position.entry_date }}</td>
+                                    <td>
+                                        {% if position.setup_name %}
+                                            <span class="badge bg-info">{{ position.setup_name }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Manual</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>${{ "%.2f"|format(position.entry_price) }}</td>
+                                    <td>{{ position.size|int }}</td>
+                                    <td>${{ "%.2f"|format(position.entry_price * position.size) }}</td>
+                                    <td>
+                                        {% if position.pnl_dollar %}
+                                            <span class="{% if position.pnl_dollar > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                ${{ "%.2f"|format(position.pnl_dollar) }}
+                                                {% if position.pnl_percent %}
+                                                    ({{ "%.1f"|format(position.pnl_percent) }}%)
+                                                {% endif %}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ position.days_held }} days</span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{{ url_for('journal.edit_trade_form', trade_id=position.id) }}" 
+                                               class="btn btn-outline-warning btn-sm" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-outline-danger btn-sm" 
+                                                    onclick="closeTradeModal({{ position.id }}, '{{ position.symbol }}')" 
+                                                    title="Close">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                        <h4 class="text-muted mt-3">No Open Positions</h4>
+                        <p class="text-muted">You don't have any open positions currently.</p>
+                        <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add Your First Trade
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if positions.summary and positions.summary.sector_breakdown %}
+<!-- Sector Breakdown -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-pie-chart"></i>
+                    Sector Allocation
+                </h5>
+            </div>
+            <div class="card-body">
+                {% for sector, data in positions.summary.sector_breakdown.items() %}
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <strong>{{ sector }}</strong>
+                        <small class="text-muted d-block">{{ data.count }} position{{ 's' if data.count != 1 else '' }}</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-info">${{ "%.0f"|format(data.value) }}</div>
+                        <small class="text-muted">
+                            {{ "%.1f"|format((data.value / positions.summary.total_value) * 100) }}%
+                        </small>
+                    </div>
+                </div>
+                <div class="progress mb-3" style="height: 6px;">
+                    <div class="progress-bar bg-info" 
+                         style="width: {{ (data.value / positions.summary.total_value) * 100 }}%"></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-shield-check"></i>
+                    Risk Overview
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Total Exposure:</span>
+                        <strong>${{ "%.2f"|format(positions.summary.total_value) }}</strong>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Largest Position:</span>
+                        <strong>
+                            {% set max_position = positions.positions|max(attribute='entry_price') if positions.positions else None %}
+                            {% if max_position %}
+                                ${{ "%.2f"|format(max_position.entry_price * max_position.size) }}
+                            {% else %}
+                                $0.00
+                            {% endif %}
+                        </strong>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Concentration Risk:</span>
+                        <span class="badge bg-{% if positions.summary.sector_breakdown|length >= 3 %}success{% elif positions.summary.sector_breakdown|length == 2 %}warning{% else %}danger{% endif %}">
+                            {% if positions.summary.sector_breakdown|length >= 3 %}
+                                Well Diversified
+                            {% elif positions.summary.sector_breakdown|length == 2 %}
+                                Moderate Risk
+                            {% else %}
+                                High Concentration
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Close Trade Modal -->
+<div class="modal fade" id="closeTradeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Close Trade</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="closeTradeForm">
+                    <input type="hidden" id="closeTradeId" name="trade_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" class="form-control" id="closeSymbol" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitPrice" class="form-label">Exit Price *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="exitPrice" name="exit_price" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitDate" class="form-label">Exit Date</label>
+                        <input type="date" class="form-control" id="exitDate" name="exit_date">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitReason" class="form-label">Exit Reason</label>
+                        <textarea class="form-control" id="exitReason" name="exit_reason" rows="3"
+                                  placeholder="Why are you closing this trade?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitCloseTrade()">
+                    <i class="bi bi-x-circle"></i> Close Trade
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function closeTradeModal(tradeId, symbol) {
+    document.getElementById('closeTradeId').value = tradeId;
+    document.getElementById('closeSymbol').value = symbol;
+    document.getElementById('exitDate').value = new Date().toISOString().split('T')[0];
+    
+    const modal = new bootstrap.Modal(document.getElementById('closeTradeModal'));
+    modal.show();
+}
+
+function submitCloseTrade() {
+    const form = document.getElementById('closeTradeForm');
+    const formData = new FormData(form);
+    const tradeId = document.getElementById('closeTradeId').value;
+    
+    const data = {
+        exit_price: parseFloat(formData.get('exit_price')),
+        exit_date: formData.get('exit_date'),
+        exit_reason: formData.get('exit_reason')
+    };
+    
+    fetch(`/journal/api/trades/${tradeId}/close`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            location.reload();
+        } else {
+            alert('Error closing trade: ' + result.error);
+        }
+    })
+    .catch(error => {
+        alert('Error closing trade: ' + error.message);
+    });
+}
+
+function refreshPrices() {
+    // Placeholder for price refresh functionality
+    alert('Price refresh functionality would be implemented here');
+}
+</script>
+{% endblock %}

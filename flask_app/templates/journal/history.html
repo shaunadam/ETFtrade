@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+
+{% block title %}Trade History - Trade Journal{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-light mb-4">
+            <i class="bi bi-clock-history text-info"></i>
+            Trade History
+        </h1>
+    </div>
+</div>
+
+<!-- Filter Controls -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('journal.history', status='all') }}" 
+               class="btn btn-{% if status_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
+                All Trades
+            </a>
+            <a href="{{ url_for('journal.history', status='open') }}" 
+               class="btn btn-{% if status_filter == 'open' %}success{% else %}outline-success{% endif %}">
+                Open
+            </a>
+            <a href="{{ url_for('journal.history', status='closed') }}" 
+               class="btn btn-{% if status_filter == 'closed' %}secondary{% else %}outline-secondary{% endif %}">
+                Closed
+            </a>
+            <a href="{{ url_for('journal.history', status='cancelled') }}" 
+               class="btn btn-{% if status_filter == 'cancelled' %}warning{% else %}outline-warning{% endif %}">
+                Cancelled
+            </a>
+        </div>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-success">
+            <i class="bi bi-plus-circle"></i> Add Trade
+        </a>
+    </div>
+</div>
+
+<!-- Trades Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-table"></i>
+                    Trade History
+                    {% if status_filter != 'all' %}
+                        - {{ status_filter|title }} Trades
+                    {% endif %}
+                </h5>
+                <small class="text-muted">
+                    {{ trades|length }} trade{{ 's' if trades|length != 1 else '' }}
+                </small>
+            </div>
+            <div class="card-body">
+                {% if trades and trades[0] and 'error' not in trades[0] %}
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Symbol</th>
+                                    <th>Entry Date</th>
+                                    <th>Exit Date</th>
+                                    <th>Setup</th>
+                                    <th>Entry Price</th>
+                                    <th>Exit Price</th>
+                                    <th>Size</th>
+                                    <th>P&L</th>
+                                    <th>R Multiple</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for trade in trades %}
+                                <tr>
+                                    <td>
+                                        <small class="text-muted">#{{ trade.id }}</small>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <strong>{{ trade.symbol }}</strong>
+                                            <small class="text-muted d-block">{{ trade.instrument_type }}</small>
+                                            {% if trade.sector %}
+                                            <span class="badge bg-secondary">{{ trade.sector }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>{{ trade.entry_date }}</td>
+                                    <td>
+                                        {% if trade.exit_date %}
+                                            {{ trade.exit_date }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if trade.setup_name %}
+                                            <span class="badge bg-info">{{ trade.setup_name }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Manual</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>${{ "%.2f"|format(trade.entry_price) }}</td>
+                                    <td>
+                                        {% if trade.exit_price %}
+                                            ${{ "%.2f"|format(trade.exit_price) }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ trade.size|int }}</td>
+                                    <td>
+                                        {% if trade.pnl_dollar %}
+                                            <div class="{% if trade.pnl_dollar > 0 %}text-success{% else %}text-danger{% endif %}">
+                                                ${{ "%.2f"|format(trade.pnl_dollar) }}
+                                                {% if trade.pnl_percent %}
+                                                    <small class="d-block">({{ "%.1f"|format(trade.pnl_percent) }}%)</small>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if trade.r_actual %}
+                                            <span class="badge bg-{% if trade.r_actual > 0 %}success{% else %}danger{% endif %}">
+                                                {{ "%.1f"|format(trade.r_actual) }}R
+                                            </span>
+                                        {% elif trade.r_planned %}
+                                            <span class="badge bg-info">{{ "%.1f"|format(trade.r_planned) }}R planned</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if trade.status == 'open' %}
+                                            <span class="badge bg-success">Open</span>
+                                        {% elif trade.status == 'closed' %}
+                                            <span class="badge bg-secondary">Closed</span>
+                                        {% elif trade.status == 'cancelled' %}
+                                            <span class="badge bg-warning">Cancelled</span>
+                                        {% else %}
+                                            <span class="badge bg-info">{{ trade.status|title }}</span>
+                                        {% endif %}
+                                        {% if trade.days_held %}
+                                            <small class="text-muted d-block">{{ trade.days_held }} days</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-info btn-sm" 
+                                                    onclick="viewTradeDetails({{ trade.id }})" 
+                                                    title="View Details">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <a href="{{ url_for('journal.edit_trade_form', trade_id=trade.id) }}" 
+                                               class="btn btn-outline-warning btn-sm" title="Edit">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            {% if trade.status == 'open' %}
+                                            <button class="btn btn-outline-danger btn-sm" 
+                                                    onclick="closeTradeModal({{ trade.id }}, '{{ trade.symbol }}')" 
+                                                    title="Close">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination placeholder -->
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <small class="text-muted">
+                            Showing {{ trades|length }} trades
+                        </small>
+                        <div>
+                            <!-- Future pagination controls would go here -->
+                        </div>
+                    </div>
+                    
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-journal-x text-muted" style="font-size: 3rem;"></i>
+                        <h4 class="text-muted mt-3">No Trades Found</h4>
+                        <p class="text-muted">
+                            {% if status_filter != 'all' %}
+                                No {{ status_filter }} trades found. Try changing the filter or add a new trade.
+                            {% else %}
+                                You haven't recorded any trades yet.
+                            {% endif %}
+                        </p>
+                        <a href="{{ url_for('journal.add_trade_form') }}" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Add Your First Trade
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Trade Details Modal -->
+<div class="modal fade" id="tradeDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Trade Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="tradeDetailsContent">
+                <!-- Trade details will be loaded here -->
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Close Trade Modal -->
+<div class="modal fade" id="closeTradeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Close Trade</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="closeTradeForm">
+                    <input type="hidden" id="closeTradeId" name="trade_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Symbol</label>
+                        <input type="text" class="form-control" id="closeSymbol" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitPrice" class="form-label">Exit Price *</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="exitPrice" name="exit_price" 
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitDate" class="form-label">Exit Date</label>
+                        <input type="date" class="form-control" id="exitDate" name="exit_date">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exitReason" class="form-label">Exit Reason</label>
+                        <textarea class="form-control" id="exitReason" name="exit_reason" rows="3"
+                                  placeholder="Why are you closing this trade?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="submitCloseTrade()">
+                    <i class="bi bi-x-circle"></i> Close Trade
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function viewTradeDetails(tradeId) {
+    // Fetch trade details via API
+    fetch(`/journal/api/trades?limit=1000`) // We'll filter client-side for now
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const trade = data.trades.find(t => t.id === tradeId);
+                if (trade) {
+                    displayTradeDetails(trade);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching trade details:', error);
+        });
+}
+
+function displayTradeDetails(trade) {
+    const content = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-info">Basic Information</h6>
+                <table class="table table-sm table-dark">
+                    <tr><td>Symbol:</td><td><strong>${trade.symbol}</strong></td></tr>
+                    <tr><td>Instrument:</td><td>${trade.instrument_name}</td></tr>
+                    <tr><td>Type:</td><td>${trade.instrument_type}</td></tr>
+                    <tr><td>Sector:</td><td>${trade.sector || 'N/A'}</td></tr>
+                    <tr><td>Setup:</td><td>${trade.setup_name || 'Manual'}</td></tr>
+                    <tr><td>Status:</td><td><span class="badge bg-${trade.status === 'open' ? 'success' : trade.status === 'closed' ? 'secondary' : 'warning'}">${trade.status}</span></td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-info">Trade Details</h6>
+                <table class="table table-sm table-dark">
+                    <tr><td>Entry Date:</td><td>${trade.entry_date}</td></tr>
+                    <tr><td>Exit Date:</td><td>${trade.exit_date || 'N/A'}</td></tr>
+                    <tr><td>Days Held:</td><td>${trade.days_held}</td></tr>
+                    <tr><td>Entry Price:</td><td>$${trade.entry_price.toFixed(2)}</td></tr>
+                    <tr><td>Exit Price:</td><td>${trade.exit_price ? '$' + trade.exit_price.toFixed(2) : 'N/A'}</td></tr>
+                    <tr><td>Size:</td><td>${trade.size}</td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-info">Risk Management</h6>
+                <table class="table table-sm table-dark">
+                    <tr><td>Stop Loss:</td><td>${trade.stop_loss ? '$' + trade.stop_loss.toFixed(2) : 'N/A'}</td></tr>
+                    <tr><td>Target Price:</td><td>${trade.target_price ? '$' + trade.target_price.toFixed(2) : 'N/A'}</td></tr>
+                    <tr><td>Planned R:</td><td>${trade.r_planned ? trade.r_planned.toFixed(1) + 'R' : 'N/A'}</td></tr>
+                    <tr><td>Actual R:</td><td>${trade.r_actual ? trade.r_actual.toFixed(1) + 'R' : 'N/A'}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-info">Performance</h6>
+                <table class="table table-sm table-dark">
+                    <tr><td>P&L (Dollar):</td><td class="${trade.pnl_dollar > 0 ? 'text-success' : trade.pnl_dollar < 0 ? 'text-danger' : ''}">${trade.pnl_dollar ? '$' + trade.pnl_dollar.toFixed(2) : 'N/A'}</td></tr>
+                    <tr><td>P&L (%):</td><td class="${trade.pnl_percent > 0 ? 'text-success' : trade.pnl_percent < 0 ? 'text-danger' : ''}">${trade.pnl_percent ? trade.pnl_percent.toFixed(1) + '%' : 'N/A'}</td></tr>
+                    <tr><td>Commission:</td><td>$${trade.commission ? trade.commission.toFixed(2) : '0.00'}</td></tr>
+                    <tr><td>Regime:</td><td>${trade.regime_at_entry || 'N/A'}</td></tr>
+                </table>
+            </div>
+        </div>
+        ${trade.entry_reason ? `
+        <div class="row">
+            <div class="col-12">
+                <h6 class="text-info">Entry Reason</h6>
+                <p class="text-light">${trade.entry_reason}</p>
+            </div>
+        </div>
+        ` : ''}
+        ${trade.exit_reason ? `
+        <div class="row">
+            <div class="col-12">
+                <h6 class="text-info">Exit Reason</h6>
+                <p class="text-light">${trade.exit_reason}</p>
+            </div>
+        </div>
+        ` : ''}
+        ${trade.notes ? `
+        <div class="row">
+            <div class="col-12">
+                <h6 class="text-info">Notes</h6>
+                <p class="text-light">${trade.notes}</p>
+            </div>
+        </div>
+        ` : ''}
+    `;
+    
+    document.getElementById('tradeDetailsContent').innerHTML = content;
+    const modal = new bootstrap.Modal(document.getElementById('tradeDetailsModal'));
+    modal.show();
+}
+
+function closeTradeModal(tradeId, symbol) {
+    document.getElementById('closeTradeId').value = tradeId;
+    document.getElementById('closeSymbol').value = symbol;
+    document.getElementById('exitDate').value = new Date().toISOString().split('T')[0];
+    
+    const modal = new bootstrap.Modal(document.getElementById('closeTradeModal'));
+    modal.show();
+}
+
+function submitCloseTrade() {
+    const form = document.getElementById('closeTradeForm');
+    const formData = new FormData(form);
+    const tradeId = document.getElementById('closeTradeId').value;
+    
+    const data = {
+        exit_price: parseFloat(formData.get('exit_price')),
+        exit_date: formData.get('exit_date'),
+        exit_reason: formData.get('exit_reason')
+    };
+    
+    fetch(`/journal/api/trades/${tradeId}/close`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            location.reload();
+        } else {
+            alert('Error closing trade: ' + result.error);
+        }
+    })
+    .catch(error => {
+        alert('Error closing trade: ' + error.message);
+    });
+}
+</script>
+{% endblock %}
