@@ -73,11 +73,14 @@ class ScreenerService:
             
             # Map instrument types to CLI format
             instrument_types = None
-            if instrument_type:
+            if instrument_type and instrument_type.strip():
                 if instrument_type.lower() == 'etf':
                     instrument_types = ['ETF', 'ETN']
                 elif instrument_type.lower() == 'stock':
                     instrument_types = ['Stock']
+            else:
+                # For "All Instruments" (empty string), include all types
+                instrument_types = ['ETF', 'ETN', 'Stock']
             
             # Use CLI screener to get signals
             signals = self.etf_screener.screen_instruments(
