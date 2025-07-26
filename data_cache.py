@@ -56,12 +56,8 @@ class DataCache:
         if force_refresh:
             return self._fetch_and_cache_data(symbol, period, force_refresh=True)
         
-        # Weekend check: if it's weekend, try cache first before any refresh logic
-        today_weekday = datetime.now().weekday()
-        is_weekend = today_weekday >= 5  # Saturday=5, Sunday=6
-        
-        # Check if we need to refresh data first (only on weekdays)
-        if not is_weekend and self._should_refresh_data(symbol, period):
+        # Check if we need to refresh data
+        if self._should_refresh_data(symbol, period):
             return self._fetch_and_cache_data(symbol, period, force_refresh=False)
         
         # Try to get from cache
@@ -74,25 +70,13 @@ class DataCache:
         # If no cached data for the requested period, check if we have any cached data
         any_cached_data = self._get_any_cached_data(symbol)
         if any_cached_data is not None and len(any_cached_data) > 0:
-            if is_weekend:
-                # On weekends, return what we have rather than fetching
-                logger.info(f"Weekend cache fallback for {symbol}: returning {len(any_cached_data)} days of available data")
-                cached_data = self._add_cached_indicators(any_cached_data, symbol)
-                return cached_data
-            else:
-                # On weekdays, use cached data if refresh wasn't needed
-                logger.debug(f"Using cached data for {symbol} (period: {period})")
-                cached_data = self._add_cached_indicators(any_cached_data, symbol)
-                return cached_data
+            logger.debug(f"Using cached data for {symbol} (period: {period})")
+            cached_data = self._add_cached_indicators(any_cached_data, symbol)
+            return cached_data
         
-        # Only try yfinance as last resort (and not on weekends)
-        if not is_weekend:
-            logger.debug(f"Cache miss for {symbol} (period: {period}), fetching from yfinance")
-            return self._fetch_and_cache_data(symbol, period, force_refresh=False)
-        else:
-            # Weekend with no cached data - return empty DataFrame
-            logger.info(f"No cached data available for {symbol} on weekend")
-            return pd.DataFrame()
+        # Cache miss - try to fetch from yfinance
+        logger.debug(f"Cache miss for {symbol} (period: {period}), fetching from yfinance")
+        return self._fetch_and_cache_data(symbol, period, force_refresh=False)
     
     def _should_refresh_data(self, symbol: str, period: str) -> bool:
         """Determine if data should be refreshed from yfinance."""
@@ -225,11 +209,32 @@ class DataCache:
     def _fetch_and_cache_data(self, symbol: str, period: str, force_refresh: bool = False) -> pd.DataFrame:
         """Fetch data from yfinance and cache it."""
         try:
-            # Check if it's weekend and not force refresh
+            # Check if it's weekend but allow updates if we're missing recent trading days
             today_weekday = datetime.now().weekday()
             if today_weekday >= 5 and not force_refresh:  # Saturday=5, Sunday=6
-                logger.info(f"Skipping weekend data fetch for {symbol} (use force_refresh=True to override)")
-                return pd.DataFrame()
+                # On weekends, check if we're missing recent trading days
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT MAX(date) FROM price_data 
+                        WHERE symbol = ? AND date >= date('now', '-7 days')
+                    """, (symbol,))
+                    result = cursor.fetchone()
+                    
+                    if not result or not result[0]:
+                        # No recent data, allow fetch
+                        logger.info(f"No recent data for {symbol}, allowing weekend fetch")
+                    else:
+                        last_date = datetime.fromisoformat(result[0]).date()
+                        today = datetime.now().date()
+                        days_diff = (today - last_date).days
+                        
+                        # If we're missing more than 3 days, allow the fetch
+                        if days_diff <= 3:
+                            logger.info(f"Skipping weekend data fetch for {symbol} - data is recent (last: {last_date})")
+                            return pd.DataFrame()
+                        else:
+                            logger.info(f"Data for {symbol} is {days_diff} days old, allowing weekend fetch")
             
             logger.info(f"Fetching {symbol} data from yfinance...")
             ticker = yf.Ticker(symbol)

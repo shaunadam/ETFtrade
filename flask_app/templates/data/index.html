@@ -148,6 +148,124 @@
     </div>
 </div>
 
+<!-- Add New Instrument -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Add New Instrument
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="addInstrumentForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="symbolField" class="form-label">Symbol <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="symbolField" name="symbol" required placeholder="e.g., SPY, AAPL">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="nameField" class="form-label">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="nameField" name="name" required placeholder="e.g., SPDR S&P 500 ETF Trust">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="typeField" class="form-label">Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="typeField" name="type" required>
+                                <option value="">Select Type</option>
+                                <option value="ETF">ETF</option>
+                                <option value="ETN">ETN</option>
+                                <option value="Stock">Stock</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="sectorField" class="form-label">Sector</label>
+                            <input type="text" class="form-control" id="sectorField" name="sector" placeholder="e.g., Technology, Healthcare">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="themeField" class="form-label">Theme</label>
+                            <input type="text" class="form-control" id="themeField" name="theme" placeholder="e.g., Broad Market, Growth">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="geographyField" class="form-label">Geography</label>
+                            <input type="text" class="form-control" id="geographyField" name="geography" placeholder="e.g., US, International">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="leverageField" class="form-label">Leverage</label>
+                            <select class="form-select" id="leverageField" name="leverage">
+                                <option value="">None</option>
+                                <option value="2x">2x</option>
+                                <option value="3x">3x</option>
+                                <option value="Inverse">Inverse</option>
+                                <option value="Inverse 2x">Inverse 2x</option>
+                                <option value="Inverse 3x">Inverse 3x</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="volatilityProfileField" class="form-label">Volatility Profile</label>
+                            <select class="form-select" id="volatilityProfileField" name="volatility_profile">
+                                <option value="">Select Profile</option>
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="avgVolumeReqField" class="form-label">Avg Volume Requirement</label>
+                            <select class="form-select" id="avgVolumeReqField" name="avg_volume_req">
+                                <option value="">Select Requirement</option>
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label for="tagsField" class="form-label">Tags</label>
+                            <input type="text" class="form-control" id="tagsField" name="tags" placeholder="comma-separated tags, e.g., swing-trade, momentum, low-risk">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12 mb-3">
+                            <label for="notesField" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notesField" name="notes" rows="3" placeholder="Optional notes about this instrument"></textarea>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <button type="submit" class="btn btn-primary" id="addInstrumentBtn">
+                                <i class="bi bi-plus-circle me-2"></i>
+                                Add Instrument
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary ms-2" onclick="resetAddInstrumentForm()">
+                                <i class="bi bi-arrow-clockwise me-2"></i>
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- Add Instrument Progress -->
+                <div id="addInstrumentProgress" class="mt-3" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="addInstrumentProgressBar" style="width: 0%"></div>
+                    </div>
+                    <div id="addInstrumentStatus" class="small text-muted mt-1"></div>
+                </div>
+                
+                <!-- Add Instrument Result -->
+                <div id="addInstrumentResult" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Instruments Universe -->
 {% if instruments %}
 <div class="row">
@@ -506,6 +624,134 @@ document.getElementById('symbolInput').addEventListener('keypress', function(e) 
     if (e.key === 'Enter') {
         lookupSymbol();
     }
+});
+
+// Add Instrument Form Handling
+let addInstrumentInProgress = false;
+
+function resetAddInstrumentForm() {
+    document.getElementById('addInstrumentForm').reset();
+    document.getElementById('addInstrumentResult').style.display = 'none';
+    document.getElementById('addInstrumentProgress').style.display = 'none';
+}
+
+function addNewInstrument(formData) {
+    if (addInstrumentInProgress) return;
+    
+    addInstrumentInProgress = true;
+    const submitBtn = document.getElementById('addInstrumentBtn');
+    const progress = document.getElementById('addInstrumentProgress');
+    const progressBar = document.getElementById('addInstrumentProgressBar');
+    const status = document.getElementById('addInstrumentStatus');
+    const result = document.getElementById('addInstrumentResult');
+    
+    // Show progress and disable button
+    progress.style.display = 'block';
+    result.style.display = 'none';
+    submitBtn.disabled = true;
+    progressBar.style.width = '10%';
+    progressBar.classList.remove('bg-danger', 'bg-success');
+    status.textContent = 'Validating symbol...';
+    
+    fetch('/data/api/add_instrument', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            progressBar.style.width = '100%';
+            progressBar.classList.add('bg-success');
+            status.textContent = 'Instrument added successfully!';
+            
+            result.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <strong>Success!</strong> ${formData.symbol} has been added to the trading universe.
+                    <br><small>Historical data backfill completed: ${data.data.records_added || 'N/A'} records</small>
+                </div>
+            `;
+            result.style.display = 'block';
+            
+            // Reset form after successful submission
+            setTimeout(() => {
+                resetAddInstrumentForm();
+                // Refresh page to show new instrument
+                location.reload();
+            }, 3000);
+        } else {
+            progressBar.style.width = '100%';
+            progressBar.classList.add('bg-danger');
+            status.textContent = 'Failed to add instrument';
+            
+            result.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Error:</strong> ${data.error || 'Unknown error occurred'}
+                </div>
+            `;
+            result.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error adding instrument:', error);
+        progressBar.style.width = '100%';
+        progressBar.classList.add('bg-danger');
+        status.textContent = 'Network error occurred';
+        
+        result.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                <strong>Network Error:</strong> Unable to connect to server. Please try again.
+            </div>
+        `;
+        result.style.display = 'block';
+    })
+    .finally(() => {
+        addInstrumentInProgress = false;
+        submitBtn.disabled = false;
+    });
+}
+
+// Handle form submission
+document.getElementById('addInstrumentForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // Collect form data
+    const formData = {};
+    const formElements = this.elements;
+    
+    for (let element of formElements) {
+        if (element.name && element.value.trim() !== '') {
+            // Handle special cases
+            if (element.name === 'symbol') {
+                formData[element.name] = element.value.trim().toUpperCase();
+            } else if (element.name === 'tags') {
+                // Clean and format tags
+                const tags = element.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+                formData[element.name] = tags.join(',');
+            } else {
+                formData[element.name] = element.value.trim();
+            }
+        }
+    }
+    
+    // Validate required fields
+    if (!formData.symbol || !formData.name || !formData.type) {
+        document.getElementById('addInstrumentResult').innerHTML = `
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Please fill in all required fields (Symbol, Name, and Type).
+            </div>
+        `;
+        document.getElementById('addInstrumentResult').style.display = 'block';
+        return;
+    }
+    
+    addNewInstrument(formData);
 });
 </script>
 {% endblock %}

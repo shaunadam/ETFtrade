@@ -37,10 +37,11 @@
                     </div>
 
                     <div class="row">
-                        <!-- Entry Date (Read-only for now) -->
+                        <!-- Entry Date -->
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Entry Date</label>
-                            <input type="text" class="form-control" value="{{ trade.entry_date }}" readonly>
+                            <label for="entry_date" class="form-label">Entry Date</label>
+                            <input type="date" class="form-control" id="entry_date" name="entry_date" 
+                                   value="{{ trade.entry_date }}">
                         </div>
 
                         <!-- Entry Price -->
@@ -128,16 +129,16 @@
                         <div class="col-md-6 mb-3">
                             <label for="r_planned" class="form-label">Planned R Multiple</label>
                             <input type="number" class="form-control" id="r_planned" name="r_planned" 
-                                   step="0.1" min="0" value="{{ trade.r_planned if trade.r_planned else '' }}">
-                            <div class="form-text">Risk/reward ratio</div>
+                                   step="0.1" min="0" value="{{ trade.r_planned if trade.r_planned else '' }}" readonly>
+                            <div class="form-text">Auto-calculated from entry/stop/target</div>
                         </div>
 
-                        <!-- Actual R -->
+                        <!-- Current R -->
                         <div class="col-md-6 mb-3">
-                            <label for="r_actual" class="form-label">Actual R Multiple</label>
-                            <input type="number" class="form-control" id="r_actual" name="r_actual" 
-                                   step="0.1" value="{{ trade.r_actual if trade.r_actual else '' }}">
-                            <div class="form-text">Calculated from exit</div>
+                            <label for="r_current" class="form-label">Current R Multiple</label>
+                            <input type="number" class="form-control" id="r_current" name="r_current" 
+                                   step="0.1" readonly>
+                            <div class="form-text">Calculated from current/exit price</div>
                         </div>
                     </div>
 
@@ -192,26 +193,33 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-12 mb-2">
-                        <small class="text-muted">Position Value:</small>
-                        <div class="text-info" id="position-value">
+                        <small class="text-muted">Original Position Value:</small>
+                        <div class="text-info" id="original-position-value">
                             ${{ "%.2f"|format(trade.entry_price * trade.size) }}
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">Current Position Value:</small>
+                        <div class="text-warning" id="current-position-value">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">P&L Amount:</small>
+                        <div id="current-pnl-dollar" class="text-muted">
+                            Loading...
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <small class="text-muted">P&L Percentage:</small>
+                        <div id="current-pnl-percent" class="text-muted">
+                            Loading...
                         </div>
                     </div>
                     <div class="col-12 mb-2">
                         <small class="text-muted">Days Held:</small>
                         <div class="text-primary">{{ trade.days_held }} days</div>
                     </div>
-                    {% if trade.pnl_dollar %}
-                    <div class="col-12 mb-2">
-                        <small class="text-muted">Current P&L:</small>
-                        <div class="{% if trade.pnl_dollar > 0 %}text-success{% else %}text-danger{% endif %}">
-                            ${{ "%.2f"|format(trade.pnl_dollar) }}
-                            {% if trade.pnl_percent %}
-                                ({{ "%.1f"|format(trade.pnl_percent) }}%)
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endif %}
                     {% if trade.stop_loss %}
                     <div class="col-12 mb-2">
                         <small class="text-muted">Risk Amount:</small>
@@ -336,21 +344,87 @@
 </div>
 
 <script>
-// Update position value calculator
+// Global variables for current trade data
+let currentTradeData = null;
+
+// Load current trade data from API
+async function loadCurrentTradeData() {
+    try {
+        const tradeId = {{ trade.id }};
+        const response = await fetch(`/journal/api/trades/${tradeId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentTradeData = data.trade;
+            updateDisplayedMetrics();
+        }
+    } catch (error) {
+        console.error('Error loading trade data:', error);
+    }
+}
+
+// Update the displayed metrics with current data
+function updateDisplayedMetrics() {
+    if (!currentTradeData) return;
+    
+    // Update Current Position Value
+    const currentPosValueEl = document.getElementById('current-position-value');
+    if (currentPosValueEl && currentTradeData.current_position_value) {
+        currentPosValueEl.textContent = '$' + currentTradeData.current_position_value.toFixed(2);
+    }
+    
+    // Update P&L Dollar
+    const pnlDollarEl = document.getElementById('current-pnl-dollar');
+    if (pnlDollarEl && currentTradeData.current_pnl_dollar !== null) {
+        const pnl = currentTradeData.current_pnl_dollar;
+        pnlDollarEl.textContent = '$' + pnl.toFixed(2);
+        pnlDollarEl.className = pnl >= 0 ? 'text-success' : 'text-danger';
+    }
+    
+    // Update P&L Percentage
+    const pnlPercentEl = document.getElementById('current-pnl-percent');
+    if (pnlPercentEl && currentTradeData.current_pnl_percent !== null) {
+        const pnlPercent = currentTradeData.current_pnl_percent;
+        pnlPercentEl.textContent = pnlPercent.toFixed(1) + '%';
+        pnlPercentEl.className = pnlPercent >= 0 ? 'text-success' : 'text-danger';
+    }
+    
+    // Update Current R Multiple
+    const rCurrentEl = document.getElementById('r_current');
+    if (rCurrentEl && currentTradeData.r_current !== null) {
+        rCurrentEl.value = currentTradeData.r_current;
+    }
+}
+
+// Update position value calculator and R multiples
 function updatePositionValue() {
     const entryPrice = parseFloat(document.getElementById('entry_price').value) || 0;
     const size = parseFloat(document.getElementById('size').value) || 0;
     const stopLoss = parseFloat(document.getElementById('stop_loss').value) || 0;
+    const targetPrice = parseFloat(document.getElementById('target_price').value) || 0;
     
-    const positionValue = entryPrice * size;
+    const originalPositionValue = entryPrice * size;
     const riskAmount = stopLoss > 0 ? Math.abs(entryPrice - stopLoss) * size : 0;
     
-    document.getElementById('position-value').textContent = '$' + positionValue.toFixed(2);
+    // Calculate planned R multiple (entry to target vs entry to stop)
+    let rPlanned = 0;
+    if (entryPrice > 0 && stopLoss > 0 && targetPrice > 0) {
+        const riskPerShare = Math.abs(entryPrice - stopLoss);
+        const rewardPerShare = Math.abs(targetPrice - entryPrice);
+        rPlanned = riskPerShare > 0 ? rewardPerShare / riskPerShare : 0;
+    }
+    
+    // Update original position value
+    document.getElementById('original-position-value').textContent = '$' + originalPositionValue.toFixed(2);
     
     const riskAmountEl = document.getElementById('risk-amount');
     if (riskAmountEl) {
         riskAmountEl.textContent = '$' + riskAmount.toFixed(2);
     }
+    
+    document.getElementById('r_planned').value = rPlanned > 0 ? rPlanned.toFixed(2) : '';
+    
+    // Note: Current R multiple will be calculated with live data from API
 }
 
 function closeTradeModal(tradeId, symbol) {
@@ -398,10 +472,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const entryPrice = document.getElementById('entry_price');
     const size = document.getElementById('size');
     const stopLoss = document.getElementById('stop_loss');
+    const targetPrice = document.getElementById('target_price');
     
-    [entryPrice, size, stopLoss].forEach(field => {
+    [entryPrice, size, stopLoss, targetPrice].forEach(field => {
         field.addEventListener('input', updatePositionValue);
     });
+    
+    // Calculate initial R multiples and load current data
+    updatePositionValue();
+    loadCurrentTradeData();
 });
 </script>
 {% endblock %}

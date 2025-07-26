@@ -120,3 +120,61 @@ def api_symbol_data(symbol):
             'success': False,
             'error': str(e)
         }), 500
+
+@data_bp.route('/api/add_instrument', methods=['POST'])
+def api_add_instrument():
+    """API endpoint for adding new instruments"""
+    try:
+        data_service = DataService()
+        
+        # Get request data
+        if not request.json:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        # Extract form data
+        symbol = request.json.get('symbol', '').strip().upper()
+        name = request.json.get('name', '').strip()
+        instrument_type = request.json.get('type', '').strip()
+        
+        # Validate required fields
+        if not symbol or not name or not instrument_type:
+            return jsonify({
+                'success': False,
+                'error': 'Symbol, name, and type are required fields'
+            }), 400
+        
+        # Call service to add instrument
+        result = data_service.add_new_instrument(
+            symbol=symbol,
+            name=name,
+            instrument_type=instrument_type,
+            sector=request.json.get('sector', '').strip() or None,
+            theme=request.json.get('theme', '').strip() or None,
+            geography=request.json.get('geography', '').strip() or None,
+            leverage=request.json.get('leverage', '').strip() or None,
+            volatility_profile=request.json.get('volatility_profile', '').strip() or None,
+            avg_volume_req=request.json.get('avg_volume_req', '').strip() or None,
+            tags=request.json.get('tags', '').strip() or None,
+            notes=request.json.get('notes', '').strip() or None
+        )
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'data': result,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Unknown error occurred')
+            }), 400
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f"Server error: {str(e)}"
+        }), 500

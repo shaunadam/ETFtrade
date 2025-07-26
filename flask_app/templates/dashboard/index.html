@@ -245,7 +245,7 @@
                                     <strong class="text-trading-blue">{{ trade.symbol }}</strong>
                                 </td>
                                 <td>
-                                    <span class="badge bg-secondary">{{ trade.setup.replace('_', ' ').title() }}</span>
+                                    <span class="badge bg-secondary">{{ (trade.setup or 'unknown').replace('_', ' ').title() }}</span>
                                 </td>
                                 <td>{{ trade.entry_date or '-' }}</td>
                                 <td>

@@ -303,3 +303,117 @@ class DataService:
             
         except Exception as e:
             return [{'error': f"Failed to get instruments: {str(e)}"}]
+    
+    def add_new_instrument(self, symbol: str, name: str, instrument_type: str, 
+                          sector: Optional[str] = None, theme: Optional[str] = None,
+                          geography: Optional[str] = None, leverage: Optional[str] = None,
+                          volatility_profile: Optional[str] = None, avg_volume_req: Optional[str] = None,
+                          tags: Optional[str] = None, notes: Optional[str] = None) -> Dict:
+        """Add a new instrument to the database and backfill historical data"""
+        try:
+            # Validate symbol with yfinance first
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            
+            try:
+                # Try to fetch 1 day of data to validate symbol
+                test_data = ticker.history(period="1d")
+                if test_data.empty:
+                    return {
+                        'success': False,
+                        'error': f"Symbol '{symbol}' not found or no data available from yfinance"
+                    }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f"Failed to validate symbol '{symbol}': {str(e)}"
+                }
+            
+            # Check if instrument already exists in database
+            import sqlite3
+            with sqlite3.connect(self.data_cache.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM instruments WHERE symbol = ?", (symbol,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    return {
+                        'success': False,
+                        'error': f"Symbol '{symbol}' already exists in the database"
+                    }
+                
+                # Validate instrument type
+                valid_types = ['ETF', 'ETN', 'Stock']
+                if instrument_type not in valid_types:
+                    return {
+                        'success': False,
+                        'error': f"Invalid instrument type. Must be one of: {', '.join(valid_types)}"
+                    }
+                
+                # Insert new instrument into database
+                try:
+                    cursor.execute("""
+                        INSERT INTO instruments (symbol, name, type, sector, theme, geography, 
+                                               leverage, volatility_profile, avg_volume_req, tags, notes, 
+                                               created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    """, (symbol, name, instrument_type, sector, theme, geography, 
+                          leverage, volatility_profile, avg_volume_req, tags, notes))
+                    
+                    conn.commit()
+                    
+                    # Get the new instrument ID
+                    instrument_id = cursor.lastrowid
+                    
+                except sqlite3.IntegrityError as e:
+                    return {
+                        'success': False,
+                        'error': f"Database constraint violation: {str(e)}"
+                    }
+            
+            # Backfill historical data (3 years)
+            backfill_result = {'records_added': 0, 'indicators_added': 0}
+            try:
+                # Use DataCache to fetch and store 3 years of data
+                data = self.data_cache.get_cached_data(symbol, period="3y", force_refresh=True)
+                
+                if not data.empty:
+                    backfill_result['records_added'] = len(data)
+                    
+                    # Count indicators that were calculated
+                    import sqlite3
+                    with sqlite3.connect(self.data_cache.db_path) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT COUNT(DISTINCT indicator_name) 
+                            FROM indicators 
+                            WHERE symbol = ?
+                        """, (symbol,))
+                        indicator_count = cursor.fetchone()[0]
+                        backfill_result['indicators_added'] = indicator_count
+                        
+                else:
+                    # If no data was retrieved, still consider it a success but note the issue
+                    backfill_result['warning'] = "Instrument added but no historical data could be retrieved"
+                    
+            except Exception as e:
+                # If backfill fails, we still keep the instrument but report the issue
+                backfill_result['warning'] = f"Instrument added but data backfill failed: {str(e)}"
+            
+            return {
+                'success': True,
+                'instrument_id': instrument_id,
+                'symbol': symbol,
+                'name': name,
+                'type': instrument_type,
+                'records_added': backfill_result['records_added'],
+                'indicators_added': backfill_result['indicators_added'],
+                'warning': backfill_result.get('warning'),
+                'message': f"Successfully added {symbol} to trading universe"
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Failed to add instrument: {str(e)}"
+            }

@@ -124,32 +124,69 @@ def get_current_regime():
         
         regime_data = regime_detector.detect_current_regime()
         
-        # Format regime data for display
+        # Debug logging
+        print(f"DEBUG: regime_data type: {type(regime_data)}")
+        print(f"DEBUG: regime_data: {regime_data}")
+        
+        if hasattr(regime_data, 'volatility_regime'):
+            print(f"DEBUG: volatility_regime: {regime_data.volatility_regime}")
+            print(f"DEBUG: volatility_regime type: {type(regime_data.volatility_regime)}")
+            if hasattr(regime_data.volatility_regime, 'value'):
+                print(f"DEBUG: volatility_regime.value: {regime_data.volatility_regime.value}")
+        
+        # Format regime data for display with safer handling
+        def safe_regime_format(regime_attr, attr_name):
+            """Safely format regime attribute"""
+            try:
+                if regime_attr is None:
+                    print(f"DEBUG: {attr_name} is None")
+                    return {'value': 'unknown', 'label': 'Unknown'}
+                
+                if not hasattr(regime_attr, 'value'):
+                    print(f"DEBUG: {attr_name} has no value attribute")
+                    return {'value': 'unknown', 'label': 'Unknown'}
+                
+                value = regime_attr.value
+                if value is None:
+                    print(f"DEBUG: {attr_name}.value is None")
+                    return {'value': 'unknown', 'label': 'Unknown'}
+                
+                return {
+                    'value': value,
+                    'label': value.replace('_', ' ').title()
+                }
+            except Exception as e:
+                print(f"DEBUG: Error formatting {attr_name}: {e}")
+                return {'value': 'unknown', 'label': 'Unknown'}
+        
         formatted_regime = {
-            'volatility_regime': {
-                'value': regime_data.volatility_regime.value,
-                'label': regime_data.volatility_regime.value.replace('_', ' ').title()
-            },
-            'trend_regime': {
-                'value': regime_data.trend_regime.value,
-                'label': regime_data.trend_regime.value.replace('_', ' ').title()
-            },
-            'sector_rotation': {
-                'value': regime_data.sector_rotation.value,
-                'label': regime_data.sector_rotation.value.replace('_', ' ').title()
-            },
-            'risk_on_off': {
-                'value': regime_data.risk_sentiment.value,
-                'label': regime_data.risk_sentiment.value.replace('_', ' ').title()
-            },
-            'vix_level': regime_data.vix_level,
-            'spy_vs_sma200': regime_data.spy_vs_sma200
+            'volatility_regime': safe_regime_format(
+                getattr(regime_data, 'volatility_regime', None), 
+                'volatility_regime'
+            ),
+            'trend_regime': safe_regime_format(
+                getattr(regime_data, 'trend_regime', None), 
+                'trend_regime'
+            ),
+            'sector_rotation': safe_regime_format(
+                getattr(regime_data, 'sector_rotation', None), 
+                'sector_rotation'
+            ),
+            'risk_on_off': safe_regime_format(
+                getattr(regime_data, 'risk_sentiment', None), 
+                'risk_sentiment'
+            ),
+            'vix_level': getattr(regime_data, 'vix_level', None),
+            'spy_vs_sma200': getattr(regime_data, 'spy_vs_sma200', None)
         }
         
+        print(f"DEBUG: formatted_regime: {formatted_regime}")
         return formatted_regime
         
     except Exception as e:
+        import traceback
         print(f"Error getting current regime: {e}")
+        print(f"Full traceback: {traceback.format_exc()}")
         return {'error': f'Regime detection failed: {str(e)}'}
 
 def get_recent_trades(limit=10):

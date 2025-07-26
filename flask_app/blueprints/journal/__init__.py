@@ -101,6 +101,17 @@ def api_update_trade(trade_id):
     result = journal_service.update_trade(trade_id, trade_data)
     return jsonify(result)
 
+@journal_bp.route('/api/trades/<int:trade_id>', methods=['GET'])
+def api_get_trade(trade_id):
+    """Get single trade with current data API"""
+    from models import Trade
+    trade = Trade.query.get(trade_id)
+    if not trade:
+        return jsonify({'success': False, 'error': 'Trade not found'})
+    
+    trade_data = journal_service._trade_to_dict(trade)
+    return jsonify({'success': True, 'trade': trade_data})
+
 @journal_bp.route('/api/trades/<int:trade_id>/close', methods=['POST'])
 def api_close_trade(trade_id):
     """Close trade API"""
@@ -173,6 +184,7 @@ def submit_edit_trade(trade_id):
     """Handle edit trade form submission"""
     try:
         trade_data = {
+            'entry_date': request.form.get('entry_date'),
             'entry_price': request.form.get('entry_price'),
             'exit_price': request.form.get('exit_price'),
             'exit_date': request.form.get('exit_date'),

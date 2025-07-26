@@ -28,6 +28,9 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     
+    # Add custom template functions
+    app.jinja_env.globals['abs'] = abs
+    
     # Register blueprints
     from blueprints.dashboard import dashboard_bp
     from blueprints.data import data_bp

@@ -15,7 +15,7 @@ from sqlalchemy import and_, or_, desc, asc
 # Add parent directory to import CLI modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from models import db, Trade, Instrument, Setup, Snapshot, Correlation
+from models import db, Trade, Instrument, Setup, Snapshot, Correlation, PriceData
 
 class JournalService:
     """Service for comprehensive trade journal operations"""
@@ -102,16 +102,25 @@ class JournalService:
             else:
                 entry_date = trade_data['entry_date']
             
+            # Calculate r_planned if not provided but we have entry, stop, and target
+            r_planned = float(trade_data.get('r_planned', 0)) or None
+            entry_price = float(trade_data['entry_price'])
+            stop_loss = float(trade_data.get('stop_loss', 0)) or None
+            target_price = float(trade_data.get('target_price', 0)) or None
+            
+            if not r_planned and stop_loss and target_price and entry_price:
+                r_planned = self._calculate_risk_reward_ratio(entry_price, stop_loss, target_price)
+            
             # Create new trade
             trade = Trade(
                 instrument_id=instrument.id,
                 setup_id=setup.id if setup else None,
                 entry_date=entry_date,
-                entry_price=float(trade_data['entry_price']),
+                entry_price=entry_price,
                 size=float(trade_data['size']),
-                stop_loss=float(trade_data.get('stop_loss', 0)) or None,
-                target_price=float(trade_data.get('target_price', 0)) or None,
-                r_planned=float(trade_data.get('r_planned', 0)) or None,
+                stop_loss=stop_loss,
+                target_price=target_price,
+                r_planned=r_planned,
                 commission=float(trade_data.get('commission', 0)),
                 notes=trade_data.get('notes', ''),
                 entry_reason=trade_data.get('entry_reason', ''),
@@ -153,12 +162,24 @@ class JournalService:
                         value = float(value) if value else None
                     setattr(trade, field, value)
             
+            # Handle entry date
+            if 'entry_date' in trade_data:
+                if isinstance(trade_data['entry_date'], str):
+                    trade.entry_date = datetime.strptime(trade_data['entry_date'], '%Y-%m-%d').date()
+                else:
+                    trade.entry_date = trade_data['entry_date']
+            
             # Handle exit date
             if 'exit_date' in trade_data:
                 if isinstance(trade_data['exit_date'], str):
                     trade.exit_date = datetime.strptime(trade_data['exit_date'], '%Y-%m-%d').date()
                 else:
                     trade.exit_date = trade_data['exit_date']
+            
+            # Auto-calculate r_planned if entry, stop, and target are all present but r_planned is not manually set
+            if (not trade_data.get('r_planned') and 
+                trade.entry_price and trade.stop_loss and trade.target_price):
+                trade.r_planned = self._calculate_risk_reward_ratio(trade.entry_price, trade.stop_loss, trade.target_price)
             
             # Update P&L if trade is closed
             if trade.status == 'closed' and trade.exit_price:
@@ -186,8 +207,16 @@ class JournalService:
             if trade.status != 'open':
                 return {'success': False, 'error': 'Trade is not open'}
             
+            # Parse exit_date if it's a string
+            if exit_date:
+                if isinstance(exit_date, str):
+                    trade.exit_date = datetime.strptime(exit_date, '%Y-%m-%d').date()
+                else:
+                    trade.exit_date = exit_date
+            else:
+                trade.exit_date = date.today()
+            
             trade.exit_price = exit_price
-            trade.exit_date = exit_date or date.today()
             trade.exit_reason = exit_reason
             trade.status = 'closed'
             
@@ -307,8 +336,55 @@ class JournalService:
         except Exception as e:
             return {'error': f'Failed to calculate performance metrics: {str(e)}'}
     
+    def _get_latest_price(self, symbol: str) -> Optional[float]:
+        """Get the most recent price for a symbol from the data cache"""
+        try:
+            latest_price_data = PriceData.query.filter(
+                PriceData.symbol == symbol
+            ).order_by(PriceData.date.desc()).first()
+            
+            return latest_price_data.close if latest_price_data else None
+        except Exception:
+            return None
+    
+    def _calculate_risk_reward_ratio(self, entry_price: float, stop_loss: float, target_price: float) -> float:
+        """Calculate risk/reward ratio from entry, stop loss, and target prices"""
+        try:
+            if not all([entry_price, stop_loss, target_price]):
+                return None
+            
+            risk_per_share = abs(entry_price - stop_loss)
+            reward_per_share = abs(target_price - entry_price)
+            
+            if risk_per_share == 0:
+                return None
+            
+            return round(reward_per_share / risk_per_share, 2)
+        except (ValueError, ZeroDivisionError):
+            return None
+    
     def _trade_to_dict(self, trade: Trade) -> Dict:
         """Convert Trade model to dictionary for API responses"""
+        # Get current price for open positions or use exit price for closed ones
+        current_price = None
+        if trade.status == 'open':
+            current_price = self._get_latest_price(trade.instrument.symbol)
+        else:
+            current_price = trade.exit_price
+        
+        # Calculate current metrics
+        original_position_value = trade.entry_price * trade.size if trade.entry_price and trade.size else 0
+        current_position_value = current_price * trade.size if current_price and trade.size else 0
+        current_pnl_dollar = (current_price - trade.entry_price) * trade.size if current_price and trade.entry_price and trade.size else 0
+        current_pnl_percent = ((current_price - trade.entry_price) / trade.entry_price) * 100 if current_price and trade.entry_price else 0
+        
+        # Calculate current R multiple
+        current_r_multiple = None
+        if current_price and trade.entry_price and trade.stop_loss:
+            risk_per_share = abs(trade.entry_price - trade.stop_loss)
+            actual_move_per_share = current_price - trade.entry_price
+            current_r_multiple = actual_move_per_share / risk_per_share if risk_per_share > 0 else 0
+        
         return {
             'id': trade.id,
             'symbol': trade.instrument.symbol,
@@ -320,11 +396,17 @@ class JournalService:
             'exit_date': trade.exit_date.isoformat() if trade.exit_date else None,
             'entry_price': trade.entry_price,
             'exit_price': trade.exit_price,
+            'current_price': current_price,
             'stop_loss': trade.stop_loss,
             'target_price': trade.target_price,
             'size': trade.size,
             'r_planned': trade.r_planned,
             'r_actual': trade.r_actual,
+            'r_current': round(current_r_multiple, 2) if current_r_multiple is not None else None,
+            'original_position_value': original_position_value,
+            'current_position_value': current_position_value,
+            'current_pnl_dollar': current_pnl_dollar,
+            'current_pnl_percent': current_pnl_percent,
             'pnl_dollar': trade.pnl_dollar,
             'pnl_percent': trade.pnl_percent,
             'commission': trade.commission,
