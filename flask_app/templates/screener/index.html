@@ -76,6 +76,25 @@
                         {{ form.submit(class="btn btn-trading-blue btn-lg", onclick="startScreeningWithProgress(event)") }}
                     </div>
                 </form>
+                
+                <!-- Load Previous Results Section -->
+                <div class="mt-3" id="cachedResultsSection" style="display: none;">
+                    <div class="alert alert-info">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <i class="bi bi-clock-history me-2"></i>
+                                <strong>Previous Results Available</strong>
+                                <div class="small mt-1" id="cachedResultsInfo">
+                                    <!-- Will be populated by JavaScript -->
+                                </div>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" onclick="loadCachedResults()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>
+                                Load Previous
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -170,8 +189,16 @@
 </div>
 
 <script>
-// Add real-time form validation
+// Cache management constants
+const CACHE_KEY = 'screenerResults';
+const CACHE_EXPIRY_HOURS = 24;
+
+// Add real-time form validation and check for cached results
 document.addEventListener('DOMContentLoaded', function() {
+    // Check for cached results on page load
+    checkForCachedResults();
+    
+    // Rest of existing validation code
     const form = document.querySelector('form');
     const confidenceInput = document.querySelector('#min_confidence');
     
@@ -291,6 +318,108 @@ async function runScreeningWithProgress(formData, progressTracker) {
         console.error('Screening error:', error);
         progressTracker.updateStep(progressTracker.steps.findIndex(s => s.status === 'active'), 'error', 'Network error occurred');
     }
+}
+
+// Cache management functions
+function checkForCachedResults() {
+    try {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (!cachedData) return;
+        
+        const parsedData = JSON.parse(cachedData);
+        
+        // Check if cache is still valid
+        if (!isCacheValid(parsedData)) {
+            localStorage.removeItem(CACHE_KEY);
+            return;
+        }
+        
+        // Show the cached results section
+        displayCachedResultsInfo(parsedData);
+        
+    } catch (error) {
+        console.error('Error checking cached results:', error);
+        localStorage.removeItem(CACHE_KEY);
+    }
+}
+
+function displayCachedResultsInfo(cachedData) {
+    const section = document.getElementById('cachedResultsSection');
+    const info = document.getElementById('cachedResultsInfo');
+    
+    if (!section || !info) return;
+    
+    const timestamp = new Date(cachedData.timestamp);
+    const params = cachedData.parameters;
+    const results = cachedData.results;
+    
+    // Format the cached results information
+    let infoHtml = `
+        <div><strong>${results.total_matches || 0}</strong> matches from ${results.total_screened || 0} instruments</div>
+        <div class="text-muted">
+            Run at: ${timestamp.toLocaleString()}
+    `;
+    
+    if (params.setup_name) {
+        infoHtml += ` | Setup: ${params.setup_name.replace('_', ' ')}`;
+    }
+    if (params.instrument_type) {
+        infoHtml += ` | Type: ${params.instrument_type}`;
+    }
+    infoHtml += ` | Min Confidence: ${(params.min_confidence * 100).toFixed(0)}%`;
+    infoHtml += `</div>`;
+    
+    info.innerHTML = infoHtml;
+    section.style.display = 'block';
+}
+
+function loadCachedResults() {
+    try {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (!cachedData) {
+            alert('No cached results found.');
+            return;
+        }
+        
+        const parsedData = JSON.parse(cachedData);
+        
+        // Check if cache is still valid
+        if (!isCacheValid(parsedData)) {
+            alert('Cached results have expired. Please run a new screening.');
+            localStorage.removeItem(CACHE_KEY);
+            document.getElementById('cachedResultsSection').style.display = 'none';
+            return;
+        }
+        
+        // Navigate to results page - the results will be loaded from localStorage there
+        window.location.href = '/screener/results?source=cache';
+        
+    } catch (error) {
+        console.error('Error loading cached results:', error);
+        alert('Error loading cached results. Please run a new screening.');
+        localStorage.removeItem(CACHE_KEY);
+    }
+}
+
+function isCacheValid(cachedData) {
+    if (!cachedData || !cachedData.timestamp) return false;
+    
+    const cacheTime = new Date(cachedData.timestamp);
+    const now = new Date();
+    const hoursDiff = (now - cacheTime) / (1000 * 60 * 60);
+    
+    return hoursDiff < CACHE_EXPIRY_HOURS;
+}
+
+function generateParameterHash(params) {
+    const paramString = JSON.stringify(params, Object.keys(params).sort());
+    let hash = 0;
+    for (let i = 0; i < paramString.length; i++) {
+        const char = paramString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16);
 }
 </script>
 {% endblock %}

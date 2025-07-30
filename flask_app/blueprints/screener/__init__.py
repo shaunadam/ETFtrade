@@ -102,7 +102,18 @@ def run_scan():
 @screener_bp.route('/results')
 def results():
     """Display cached screening results"""
-    # Get results from session
+    source = request.args.get('source', 'session')
+    
+    # Check if we should load from localStorage (indicated by source=cache)
+    if source == 'cache':
+        # For cache loading, we'll pass a flag to the template to load from localStorage
+        # The actual data loading will happen on the client side
+        return render_template('screener/results.html', 
+                             results=None, 
+                             form=None,
+                             load_from_cache=True)
+    
+    # Default behavior: Get results from session
     results = session.get('last_screening_results')
     params = session.get('last_screening_params')
     
@@ -128,7 +139,8 @@ def results():
     
     return render_template('screener/results.html', 
                          results=results, 
-                         form=form)
+                         form=form,
+                         load_from_cache=False)
 
 @screener_bp.route('/analyze/<symbol>')
 def analyze_symbol(symbol):

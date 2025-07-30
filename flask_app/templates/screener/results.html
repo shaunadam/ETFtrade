@@ -9,7 +9,7 @@
             <i class="bi bi-search text-trading-blue"></i>
             Screening Results
         </h1>
-        <a href="{{ url_for('screener.index') }}" class="btn btn-outline-light">
+        <a href="{{ url_for('screener.index') }}" class="btn btn-outline-light" onclick="clearCacheOnNewSearch()">
             <i class="bi bi-arrow-left me-2"></i>
             New Search
         </a>
@@ -310,6 +310,289 @@
 </div>
 
 <script>
+// Cache management for screener results
+const CACHE_KEY = 'screenerResults';
+const CACHE_EXPIRY_HOURS = 24;
+
+// Save current results to localStorage on page load, or load from cache if requested
+document.addEventListener('DOMContentLoaded', function() {
+    {% if load_from_cache %}
+    // Load results from localStorage
+    loadResultsFromCache();
+    {% elif results and 'error' not in results %}
+    const resultsData = {
+        results: {{ results | tojson }},
+        timestamp: new Date().toISOString(),
+        parameters: {
+            {% if results.screening_parameters %}
+            setup_name: '{{ results.screening_parameters.setup_name or "" }}',
+            instrument_type: '{{ results.screening_parameters.instrument_type or "" }}',
+            regime_filter: {{ results.screening_parameters.regime_filter | tojson }},
+            min_confidence: {{ results.screening_parameters.min_confidence | tojson }}
+            {% endif %}
+        },
+        paramHash: generateParameterHash({
+            {% if results.screening_parameters %}
+            setup_name: '{{ results.screening_parameters.setup_name or "" }}',
+            instrument_type: '{{ results.screening_parameters.instrument_type or "" }}',
+            regime_filter: {{ results.screening_parameters.regime_filter | tojson }},
+            min_confidence: {{ results.screening_parameters.min_confidence | tojson }}
+            {% endif %}
+        })
+    };
+    
+    localStorage.setItem(CACHE_KEY, JSON.stringify(resultsData));
+    console.log('Screener results cached to localStorage');
+    {% endif %}
+    
+    // Initialize other page functionality
+    updateBacktestButton();
+});
+
+// Generate a simple hash from parameters for cache key
+function generateParameterHash(params) {
+    const paramString = JSON.stringify(params, Object.keys(params).sort());
+    let hash = 0;
+    for (let i = 0; i < paramString.length; i++) {
+        const char = paramString.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16);
+}
+
+// Check if cached results are still valid (not expired)
+function isCacheValid(cachedData) {
+    if (!cachedData || !cachedData.timestamp) return false;
+    
+    const cacheTime = new Date(cachedData.timestamp);
+    const now = new Date();
+    const hoursDiff = (now - cacheTime) / (1000 * 60 * 60);
+    
+    return hoursDiff < CACHE_EXPIRY_HOURS;
+}
+
+// Load and display results from localStorage
+function loadResultsFromCache() {
+    try {
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (!cachedData) {
+            showCacheError('No cached results found. Please run a new screening.');
+            return;
+        }
+        
+        const parsedData = JSON.parse(cachedData);
+        
+        // Check if cache is still valid
+        if (!isCacheValid(parsedData)) {
+            showCacheError('Cached results have expired. Please run a new screening.');
+            localStorage.removeItem(CACHE_KEY);
+            return;
+        }
+        
+        // Replace page content with cached results
+        renderCachedResults(parsedData);
+        
+    } catch (error) {
+        console.error('Error loading cached results:', error);
+        showCacheError('Error loading cached results. Please run a new screening.');
+        localStorage.removeItem(CACHE_KEY);
+    }
+}
+
+function renderCachedResults(cachedData) {
+    const results = cachedData.results;
+    const parameters = cachedData.parameters;
+    const timestamp = new Date(cachedData.timestamp);
+    
+    // Update page title area to show it's from cache
+    const titleArea = document.querySelector('.row:first-child');
+    if (titleArea) {
+        titleArea.innerHTML = `
+            <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+                <h1 class="text-light">
+                    <i class="bi bi-search text-trading-blue"></i>
+                    Screening Results <span class="badge bg-info ms-2">Cached</span>
+                </h1>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" onclick="clearCacheAndReturn()">
+                        <i class="bi bi-trash me-2"></i>
+                        Clear Cache
+                    </button>
+                    <a href="/screener/" class="btn btn-outline-light">
+                        <i class="bi bi-arrow-left me-2"></i>
+                        New Search
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Create and insert the results summary
+    const mainContent = document.querySelector('.container-fluid > .row:last-child');
+    if (mainContent) {
+        mainContent.innerHTML = '';
+        
+        // Add cache info banner
+        const cacheInfoHtml = `
+            <div class="col-12 mb-4">
+                <div class="alert alert-info d-flex align-items-center">
+                    <i class="bi bi-clock-history me-2"></i>
+                    <div>
+                        <strong>Cached Results:</strong>
+                        ${results.total_matches} matches from ${results.total_screened} instruments
+                        <br><small class="text-muted">
+                            Generated: ${timestamp.toLocaleString()}
+                            ${parameters.setup_name ? ` | Setup: ${parameters.setup_name.replace('_', ' ')}` : ''}
+                            ${parameters.instrument_type ? ` | Type: ${parameters.instrument_type}` : ''}
+                            | Min Confidence: ${(parameters.min_confidence * 100).toFixed(0)}%
+                        </small>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        mainContent.insertAdjacentHTML('beforeend', cacheInfoHtml);
+        
+        // Add results table if there are results
+        if (results.results && results.results.length > 0) {
+            const tableHtml = generateResultsTable(results.results);
+            mainContent.insertAdjacentHTML('beforeend', tableHtml);
+        } else {
+            const noResultsHtml = `
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body text-center py-5">
+                            <i class="bi bi-search display-1 text-muted mb-3"></i>
+                            <h3 class="text-light">No Results Found</h3>
+                            <p class="text-muted">No instruments met the screening criteria in this cached result.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            mainContent.insertAdjacentHTML('beforeend', noResultsHtml);
+        }
+    }
+}
+
+function generateResultsTable(results) {
+    let tableHtml = `
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-table me-2"></i>
+                        Trade Opportunities (${results.length})
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Setup</th>
+                                    <th>Signal</th>
+                                    <th>Confidence</th>
+                                    <th>Entry</th>
+                                    <th>Target</th>
+                                    <th>Stop</th>
+                                    <th>R/R</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+    `;
+    
+    results.forEach(result => {
+        const instrument = result.instrument || {};
+        const setupName = result.setup_name || (result.best_setup && result.best_setup.setup_name) || '';
+        const signal = result.signal || (result.best_setup && result.best_setup.signal) || 'N/A';
+        const confidence = result.confidence || 0;
+        const entryPrice = result.entry_price || (result.best_setup && result.best_setup.entry_price) || null;
+        const targetPrice = result.target_price || (result.best_setup && result.best_setup.target_price) || null;
+        const stopLoss = result.stop_loss || (result.best_setup && result.best_setup.stop_loss) || null;
+        
+        // Calculate R/R ratio
+        let rrRatio = 'N/A';
+        if (entryPrice && targetPrice && stopLoss) {
+            const reward = targetPrice - entryPrice;
+            const risk = entryPrice - stopLoss;
+            if (risk > 0) {
+                rrRatio = `${(reward/risk).toFixed(1)}:1`;
+            }
+        }
+        
+        tableHtml += `
+            <tr>
+                <td><strong class="text-trading-blue">${instrument.symbol || ''}</strong></td>
+                <td><small class="text-muted">${(instrument.name || '').substring(0, 30)}${(instrument.name || '').length > 30 ? '...' : ''}</small></td>
+                <td><span class="badge ${instrument.type === 'ETF' ? 'bg-trading-blue' : 'bg-trading-green'}">${instrument.type || ''}</span></td>
+                <td><small>${setupName.replace('_', ' ')}</small></td>
+                <td><span class="badge ${signal === 'BUY' ? 'bg-trading-green' : signal === 'SELL' ? 'bg-trading-red' : 'bg-secondary'}">${signal}</span></td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="progress me-2" style="width: 60px; height: 8px;">
+                            <div class="progress-bar ${confidence >= 0.8 ? 'bg-trading-green' : confidence >= 0.6 ? 'bg-trading-yellow' : 'bg-trading-red'}" 
+                                 style="width: ${(confidence * 100).toFixed(0)}%"></div>
+                        </div>
+                        <small>${(confidence * 100).toFixed(1)}%</small>
+                    </div>
+                </td>
+                <td>${entryPrice ? `<strong>$${entryPrice.toFixed(2)}</strong>` : '<small class="text-muted">N/A</small>'}</td>
+                <td>${targetPrice ? `<span class="text-trading-green">$${targetPrice.toFixed(2)}</span>` : '<small class="text-muted">N/A</small>'}</td>
+                <td>${stopLoss ? `<span class="text-trading-red">$${stopLoss.toFixed(2)}</span>` : '<small class="text-muted">N/A</small>'}</td>
+                <td>${rrRatio}</td>
+            </tr>
+        `;
+    });
+    
+    tableHtml += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return tableHtml;
+}
+
+function showCacheError(message) {
+    const mainContent = document.querySelector('.container-fluid');
+    if (mainContent) {
+        mainContent.innerHTML = `
+            <div class="row">
+                <div class="col-12">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Cache Error:</strong> ${message}
+                    </div>
+                    <div class="text-center">
+                        <a href="/screener/" class="btn btn-trading-blue">
+                            <i class="bi bi-arrow-left me-2"></i>
+                            Back to Screener
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function clearCacheAndReturn() {
+    localStorage.removeItem(CACHE_KEY);
+    window.location.href = '/screener/';
+}
+
+function clearCacheOnNewSearch() {
+    // Clear the cache when starting a new search
+    localStorage.removeItem(CACHE_KEY);
+    return true; // Allow the navigation to proceed
+}
+
 function exportResults(format) {
     // Get current screening parameters
     const params = new URLSearchParams();
